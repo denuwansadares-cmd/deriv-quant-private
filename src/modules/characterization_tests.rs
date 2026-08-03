@@ -401,7 +401,8 @@ fn secret_redaction_is_recursive_case_insensitive_and_preserves_safe_fields() {
             "safe": "R_50"
         },
         "items": [{"client_secret": "secret-value"}, {"url": "https://secret"}],
-        "contract_id": "42"
+        "contract_id": "raw-identifier-42",
+        "count": 42
     }));
     for secret in [
         "real-secret",
@@ -414,7 +415,8 @@ fn secret_redaction_is_recursive_case_insensitive_and_preserves_safe_fields() {
         assert!(!redacted.contains(secret), "secret leaked: {secret}");
     }
     assert!(redacted.contains("R_50"));
-    assert!(redacted.contains("42"));
+    assert!(!redacted.contains("raw-identifier-42"));
+    assert!(redacted.contains("\"count\":42"));
     assert!(redacted.matches("[REDACTED]").count() >= 5);
 }
 

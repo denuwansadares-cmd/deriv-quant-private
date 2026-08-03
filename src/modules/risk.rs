@@ -34,6 +34,7 @@ struct RiskManager {
     safety_loss_throttle_until_ms: i64,
     stop_reason: Option<String>,
     persistence_healthy: bool,
+    runtime_config: RuntimeRiskConfig,
 }
 
 impl RiskManager {
@@ -43,8 +44,12 @@ impl RiskManager {
     }
 
     fn with_balance(verified_balance: Money) -> Self {
+        Self::with_runtime_config(verified_balance, TradingMode::Demo, RuntimeRiskConfig::compiled_defaults())
+    }
+
+    fn with_runtime_config(verified_balance: Money, mode: TradingMode, runtime_config: RuntimeRiskConfig) -> Self {
         let balance_risk = verified_balance.0.saturating_mul(BALANCE_RISK_BPS) / 10_000;
-        let base_stake = Money(balance_risk.clamp(MIN_STAKE_MINOR, HARD_MAX_STAKE_MINOR));
+        let base_stake = Money(balance_risk.clamp(MIN_STAKE_MINOR, runtime_config.max_stake_minor));
         Self {
             verified_balance,
             base_stake,
@@ -64,8 +69,8 @@ impl RiskManager {
             current_stake: base_stake,
             recovery_wins: 0,
             strike_count: 0,
-            mode: TradingMode::Demo,
-            resume_mode: TradingMode::Demo,
+            mode,
+            resume_mode: mode,
             profit_cooldown_until: None,
             stopped: Arc::new(AtomicBool::new(false)),
             per_type_stats: HashMap::new(),
@@ -77,6 +82,7 @@ impl RiskManager {
             safety_loss_throttle_until_ms: 0,
             stop_reason: None,
             persistence_healthy: true,
+            runtime_config,
         }
     }
 
@@ -237,7 +243,7 @@ impl RiskManager {
         }
     }
     fn session_loss_limit(&self) -> Money {
-        Money(self.verified_balance.0.saturating_mul(SESSION_LOSS_LIMIT_BPS) / 10_000)
+        Money(self.verified_balance.0.saturating_mul(self.runtime_config.session_loss_limit_bps) / 10_000)
     }
     fn stake_for_risk(&self, signal_risk: f64) -> f64 {
         let cap = if self.win_streak_safe_trades_remaining > 0 {

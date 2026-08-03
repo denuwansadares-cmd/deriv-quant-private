@@ -68,6 +68,21 @@ include!("modules/reliability_tests.rs");
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════════
 
+async fn join_runtime_tasks(
+    tasks: Vec<tokio::task::JoinHandle<()>>,
+    timeout_duration: Duration,
+) -> Result<()> {
+    tokio::time::timeout(timeout_duration, async {
+        for task in tasks {
+            task.await.context("runtime task join failed")?;
+        }
+        Result::<()>::Ok(())
+    })
+    .await
+    .context("runtime tasks did not join before shutdown timeout")??;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -107,6 +122,8 @@ async fn main() -> Result<()> {
 
     let (mode_str, symbols, history_path) = parse_args();
     let mode_str = mode_str.to_ascii_lowercase();
+    let demo_duration = configured_demo_duration(&mode_str)?;
+    let runtime_risk_config = RuntimeRiskConfig::load(&mode_str)?;
     let random_seed = std::env::var("DERIV_RANDOM_SEED")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -114,6 +131,10 @@ async fn main() -> Result<()> {
     if mode_str == "simulation" {
         activate_virtual_time(0);
     }
+    anyhow::ensure!(
+        !history_path.trim().is_empty(),
+        "HISTORY_PATH must be set explicitly or supplied with --history"
+    );
     init_decision_journal(&mode_str, &symbols, &history_path, random_seed)?;
     if !matches!(mode_str.as_str(), "demo" | "live" | "simulation") {
         anyhow::bail!("Unsupported mode; use demo, live, or simulation");
@@ -147,16 +168,10 @@ async fn main() -> Result<()> {
     // ── Step 1: Fetch Options Accounts ───────────────────────
     log::info!("Fetching options accounts...");
     let accounts = fetch_options_accounts(&app_id, &access_token).await?;
-    log::info!("Found {} options account(s):", accounts.len());
-    for acc in &accounts {
-        log::info!(
-            "  {} | type={:?} | virtual={:?} | balance={:?}",
-            acc.account_id,
-            acc.account_type,
-            acc.is_virtual,
-            acc.balance
-        );
-    }
+    log::info!(
+        "Found {} options account(s); identifiers and balances redacted",
+        accounts.len()
+    );
 
     // ── Step 2: Select demo account ──────────────────────────
     // Filter out disabled accounts, prefer virtual/demo, then DOT prefix
@@ -190,10 +205,8 @@ async fn main() -> Result<()> {
         .with_context(|| format!("No active {} account found", mode_str))?;
 
     log::info!(
-        "Selected account: {} (type={:?}, virtual={:?})",
-        selected_account.account_id,
-        selected_account.account_type,
-        selected_account.is_virtual
+        "Selected {} account (identifier and balance redacted)",
+        mode_str
     );
     let account_currency = selected_account
         .currency
@@ -214,25 +227,16 @@ async fn main() -> Result<()> {
     } else {
         TradingMode::Demo
     };
-    let risk_manager = Arc::new(RwLock::new(RiskManager::with_mode(
+    let risk_manager = Arc::new(RwLock::new(RiskManager::with_runtime_config(
         verified_balance,
         trading_mode,
+        runtime_risk_config,
     )));
-    init_risk_state(risk_manager.clone())?;
+    let _runtime_lock = init_risk_state(risk_manager.clone())?;
     anyhow::ensure!(
         !risk_manager.read().is_stopped(),
         "persistent risk stop is engaged; operator review is required"
     );
-    let heartbeat_task = tokio::spawn(async {
-        let mut heartbeat = interval(Duration::from_secs(1));
-        loop {
-            heartbeat.tick().await;
-            write_runtime_heartbeat();
-            if risk_path(MANUAL_STOP_NAME).exists() {
-                risk_v2_stop("manual emergency stop file detected");
-            }
-        }
-    });
     log::info!("Trading currency: {}", account_currency);
 
     // ── Step 3: Request OTP ──────────────────────────────────
@@ -249,7 +253,7 @@ async fn main() -> Result<()> {
     log::info!("OTP obtained — connecting...");
 
     // ── Step 4: Launch API + Connect ─────────────────────────
-    let api = ApiHandle::launch(
+    let mut api = ApiHandle::launch(
         ws_url,
         symbols.clone(),
         app_id.clone(),
@@ -280,6 +284,22 @@ async fn main() -> Result<()> {
     let tick_counter = Arc::new(AtomicU64::new(0));
     let total_latency_us = Arc::new(AtomicU64::new(0));
     let latency_samples = Arc::new(AtomicU64::new(0));
+    let (runtime_shutdown, _) = broadcast::channel::<()>(8);
+    let mut heartbeat_shutdown = runtime_shutdown.subscribe();
+    let heartbeat_task = tokio::spawn(async move {
+        let mut heartbeat = interval(Duration::from_secs(1));
+        loop {
+            tokio::select! {
+                _ = heartbeat.tick() => {
+                    write_runtime_heartbeat();
+                    if risk_path(MANUAL_STOP_NAME).exists() {
+                        risk_v2_stop("manual emergency stop file detected");
+                    }
+                }
+                _ = heartbeat_shutdown.recv() => break,
+            }
+        }
+    });
 
     // Set initial mode
     {
@@ -326,7 +346,8 @@ async fn main() -> Result<()> {
     let qualifications1 = qualification_gate.clone();
     let digit_contracts_enabled = ENABLE_RANDOM_CONTRACT_FAMILIES;
 
-    tokio::spawn(async move {
+    let mut strategy_shutdown = runtime_shutdown.subscribe();
+    let strategy_task = tokio::spawn(async move {
         log::info!("[Strategy] Started");
         let mut pacer = ExecutionPacer::new();
         let mut state = TradeState::Idle;
@@ -371,7 +392,11 @@ async fn main() -> Result<()> {
         );
 
         loop {
-            match evt_rx1.recv().await {
+            let event = tokio::select! {
+                _ = strategy_shutdown.recv() => break,
+                event = evt_rx1.recv() => event,
+            };
+            match event {
                 Ok(ApiEvent::Connected) => {
                     let mode = rm1.read().current_mode();
                     log::info!("[Strategy] Connected! Mode={}", mode);
@@ -509,12 +534,10 @@ async fn main() -> Result<()> {
                                     contract_id: contract_id.clone(),
                                 }) {
                                     Ok(()) => log::warn!(
-                                        "[Strategy] Contract {} update timed out; refreshing settlement subscription",
-                                        contract_id
+                                        "[Strategy] Contract update timed out; refreshing redacted subscription"
                                     ),
                                     Err(error) => log::error!(
-                                        "[Strategy] Contract {} refresh delivery failed: {}",
-                                        contract_id,
+                                        "[Strategy] Contract refresh delivery failed (identifier redacted): {}",
                                         error
                                     ),
                                 }
@@ -1130,8 +1153,7 @@ async fn main() -> Result<()> {
                         }),
                     );
                     log::info!(
-                        "Proposal received: {} {} @ ${:.4}",
-                        id,
+                        "Proposal received: {} @ ${:.4} (identifier redacted)",
                         underlying_symbol,
                         ask_price
                     );
@@ -1246,7 +1268,7 @@ async fn main() -> Result<()> {
                     pacer.record_trade_opened();
                     pending_since = Some(Instant::now());
                     entry_wait_started_at = Instant::now();
-                    log::info!("Contract opened: {}", contract_id);
+                    log::info!("Contract opened (identifier redacted)");
                 }
                 Ok(ApiEvent::ContractSold {
                     contract_id,
@@ -1264,7 +1286,10 @@ async fn main() -> Result<()> {
                         continue;
                     }
                     state.transition(TradeState::Settling);
-                    log::info!("Contract settled: {} value={:.4}", contract_id, sold_for);
+                    log::info!(
+                        "Contract settled (identifier redacted) value={:.4}",
+                        sold_for
+                    );
                     let was_win = sold_for > active_buy_cost;
                     let settled_result = TradeResult {
                         profit_loss: sold_for - active_buy_cost,
@@ -1335,13 +1360,12 @@ async fn main() -> Result<()> {
                     state.transition(TradeState::CollectingTicks);
                 }
                 Ok(ApiEvent::ContractUpdate {
-                    contract_id,
+                    contract_id: _,
                     current_spot,
                     bid_price,
                 }) => {
                     log::debug!(
-                        "Contract {} update: spot={:.6} bid={:.4}",
-                        contract_id,
+                        "Contract update (identifier redacted): spot={:.6} bid={:.4}",
                         current_spot,
                         bid_price
                     );
@@ -1407,10 +1431,7 @@ async fn main() -> Result<()> {
                                     "family": contract.contract_type,
                                 }),
                             );
-                            log::warn!(
-                                "[Strategy] Recovered uncertain buy as contract {}",
-                                contract.contract_id
-                            );
+                            log::warn!("[Strategy] Recovered uncertain buy as contract (identifier redacted)");
                         } else {
                             *pbi1.write() = None;
                             pending_proposal = None;
@@ -1500,7 +1521,8 @@ async fn main() -> Result<()> {
     let mut evt_rx2 = api.subscribe_events();
     let pbi2 = pending_buy_info.clone();
 
-    tokio::spawn(async move {
+    let mut executor_shutdown = runtime_shutdown.subscribe();
+    let executor_task = tokio::spawn(async move {
         log::info!("[Executor] Started");
         let mut open_contracts: HashMap<String, (String, f64, u64, u64, Instant)> = HashMap::new();
         let mut auto_contracts: HashMap<String, (String, f64, ContractType)> = HashMap::new();
@@ -1511,6 +1533,7 @@ async fn main() -> Result<()> {
 
         loop {
             tokio::select! {
+            _ = executor_shutdown.recv() => { break; }
             _ = exit_timer.tick() => {
                 for (contract_id, (symbol, _, _, ticks_held, opened_at)) in open_contracts.iter() {
                     let initial_fallback_due = !closing_contracts.contains_key(contract_id)
@@ -1519,7 +1542,7 @@ async fn main() -> Result<()> {
                         last_attempt.elapsed() >= Duration::from_millis(SELL_RETRY_MS)
                     });
                     if initial_fallback_due || retry_due {
-                        log::info!("FAST EXIT RETRY: {} after {} tick(s) | cid={}", symbol, ticks_held, contract_id);
+                        log::info!("FAST EXIT RETRY: {} after {} tick(s) (identifier redacted)", symbol, ticks_held);
                         if cmd2.try_send(ApiCommand::SellContract { contract_id: contract_id.clone() }).is_ok() {
                             closing_contracts.insert(contract_id.clone(), Instant::now());
                         }
@@ -1533,15 +1556,14 @@ async fn main() -> Result<()> {
                         let entry_price = buy_price.unwrap_or(info.proposed_price);
                         if info.contract_type == ContractType::Accumulator {
                             open_contracts.insert(contract_id.clone(), (info.symbol, entry_price, info.entry_tick_epoch, 0u64, Instant::now()));
-                            log::info!("[Executor] Tracking ACCU: {} (entry=${:.4})", contract_id, entry_price);
+                            log::info!("[Executor] Tracking ACCU (identifier redacted, entry=${:.4})", entry_price);
                         } else {
                             auto_contracts.insert(contract_id.clone(), (info.symbol, entry_price, info.contract_type));
-                            log::info!("[Executor] Awaiting auto-settlement: {} type={}", contract_id, info.contract_type);
+                            log::info!("[Executor] Awaiting auto-settlement (identifier redacted) type={}", info.contract_type);
                         }
                     } else {
                         log::warn!(
-                            "[Executor] ContractOpened without pending buy info: {}",
-                            contract_id
+                            "[Executor] ContractOpened without pending buy info (identifier redacted)"
                         );
                     }
                     // Subscribe to contract updates for stop-loss/profit monitoring
@@ -1585,7 +1607,7 @@ async fn main() -> Result<()> {
                             let _ = cmd2.try_send(ApiCommand::SubscribeContract {
                                 contract_id: contract.contract_id.clone(),
                             });
-                            log::warn!("[Executor] Recovered and tracking uncertain contract {}", contract.contract_id);
+                            log::warn!("[Executor] Recovered and tracking uncertain contract (identifier redacted)");
                         }
                     }
                 }
@@ -1604,13 +1626,12 @@ async fn main() -> Result<()> {
                             "LOSS"
                         };
                         log::info!(
-                            "CLOSED[{}]: {} | gross=${:.4} | net=${:.4} | ticks={} | cid={}",
+                            "CLOSED[{}]: {} | gross=${:.4} | net=${:.4} | ticks={} (identifier redacted)",
                             tag,
                             sym,
                             gross_pnl,
                             net_pnl,
-                            ticks_held,
-                            contract_id
+                            ticks_held
                         );
 
                         rot2.write().record_result(&sym, result.is_profitable());
@@ -1618,10 +1639,10 @@ async fn main() -> Result<()> {
                         let net_pnl = sold_for - buy_cost;
                         let result = TradeResult { profit_loss: net_pnl };
                         let return_pct = if buy_cost > 0.0 { net_pnl / buy_cost * 100.0 } else { 0.0 };
-                        log::info!("[CLOSE] {} | {} | PnL={:+.2} | {:+.0}% | cid={}", contract_type, sym, net_pnl, return_pct, contract_id);
+                        log::info!("[CLOSE] {} | {} | PnL={:+.2} | {:+.0}% (identifier redacted)", contract_type, sym, net_pnl, return_pct);
                         rot2.write().record_result(&sym, result.is_profitable());
                     } else {
-                        log::warn!("[Executor] Sold unknown contract: {}", contract_id);
+                        log::warn!("[Executor] Sold unknown contract (identifier redacted)");
                     }
                 }
                 Ok(ApiEvent::Tick(tick)) => {
@@ -1633,8 +1654,8 @@ async fn main() -> Result<()> {
                             *ticks_held += 1;
                             if *ticks_held >= MAX_ACCUMULATOR_HOLD_TICKS {
                                 log::info!(
-                                    "MAX-HOLD EXIT: {} after {} ticks | cid={}",
-                                    symbol, ticks_held, contract_id
+                                    "MAX-HOLD EXIT: {} after {} ticks (identifier redacted)",
+                                    symbol, ticks_held
                                 );
                                 if cmd2.try_send(ApiCommand::SellContract {
                                     contract_id: contract_id.clone(),
@@ -1651,8 +1672,8 @@ async fn main() -> Result<()> {
                     bid_price,
                 }) => {
                     log::debug!(
-                        "[Executor] Contract {} update: spot={:.6} bid={:.4}",
-                        contract_id, current_spot, bid_price
+                        "[Executor] Contract update (identifier redacted): spot={:.6} bid={:.4}",
+                        current_spot, bid_price
                     );
                     if let Some((symbol, buy_cost, _, ticks_held, _)) =
                         open_contracts.get(&contract_id)
@@ -1666,9 +1687,9 @@ async fn main() -> Result<()> {
                             {
                                 let reason = if take_profit { "TAKE-PROFIT" } else { "STOP-LOSS" };
                                 log::info!(
-                                    "{}: {} return={:+.2}% bid=USD {:.4} ticks={} | cid={}",
+                                    "{}: {} return={:+.2}% bid=USD {:.4} ticks={} (identifier redacted)",
                                     reason, symbol, return_pct * 100.0, bid_price,
-                                    ticks_held, contract_id
+                                    ticks_held
                                 );
                                 if cmd2.try_send(ApiCommand::SellContract {
                                     contract_id: contract_id.clone(),
@@ -1703,23 +1724,25 @@ async fn main() -> Result<()> {
     let shutdown3 = api.shutdown_sender();
     let mut evt_rx3 = api.subscribe_events();
 
-    tokio::spawn(async move {
+    let mut risk_shutdown = runtime_shutdown.subscribe();
+    let risk_task = tokio::spawn(async move {
         log::info!("[RiskMonitor] Started");
         let mut ticker = interval(Duration::from_secs(1));
 
         loop {
             tokio::select! {
+                _ = risk_shutdown.recv() => { break; }
                 _ = ticker.tick() => {
                     let mode = { let mut risk = rm3.write(); risk.evaluate(); risk.current_mode() };
-                    if mode == TradingMode::Stopped {
-                        log::info!("[RiskMonitor] Hard session circuit breaker reached; stopping WebSocket and trading");
+                    if mode == TradingMode::Stopped && rm3.read().safety_open_contracts.is_empty() {
+                        log::info!("[RiskMonitor] Stop engaged and exposure drained; stopping WebSocket");
                         let _ = shutdown3.send(());
                         break;
                     }
                 }
                 Ok(event) = evt_rx3.recv() => {
-                    if let ApiEvent::ContractSold { contract_id, sold_for } = event {
-                        log::debug!("[Risk] Sold {} for ${:.4}", contract_id, sold_for);
+                    if let ApiEvent::ContractSold { contract_id: _, sold_for } = event {
+                        log::debug!("[Risk] Sold contract (identifier redacted) for ${:.4}", sold_for);
                     }
                 }
                 else => { log::info!("[RiskMonitor] Channel closed"); break; }
@@ -1733,10 +1756,14 @@ async fn main() -> Result<()> {
     let tc_status = tick_counter.clone();
     let lat_status = total_latency_us.clone();
     let lats_status = latency_samples.clone();
-    tokio::spawn(async move {
+    let mut status_shutdown = runtime_shutdown.subscribe();
+    let status_task = tokio::spawn(async move {
         let mut ticker = interval(Duration::from_secs(30));
         loop {
-            ticker.tick().await;
+            tokio::select! {
+                _ = status_shutdown.recv() => break,
+                _ = ticker.tick() => {}
+            }
             let ticks = tc_status.load(Ordering::Relaxed);
             let rm = rm_status.read();
             let total_lat = lat_status.load(Ordering::Relaxed);
@@ -1768,7 +1795,8 @@ async fn main() -> Result<()> {
         let mut ticker = interval(Duration::from_millis(100));
         loop {
             ticker.tick().await;
-            if risk_manager.read().is_stopped() {
+            let risk = risk_manager.read();
+            if risk.is_stopped() && risk.safety_open_contracts.is_empty() {
                 break;
             }
         }
@@ -1776,17 +1804,48 @@ async fn main() -> Result<()> {
     tokio::select! {
         result = tokio::signal::ctrl_c() => {
             result?;
-            log::info!("Ctrl+C received. Shutting down...");
+            log::info!("Ctrl+C received. Engaging persistent stop and draining exposure...");
+            risk_v2_stop("operator interrupt");
         }
         _ = auto_stop => {
-            log::info!("Automatic session stop reached. Shutting down...");
+            log::info!("Automatic risk stop reached. Shutting down...");
+        }
+        _ = wait_for_demo_deadline(demo_duration) => {
+            log::info!("Configured demo duration reached; engaging persistent stop...");
+            risk_v2_stop("configured demo duration completed");
         }
     }
 
+    if risk_manager.read().is_stopped() {
+        let drain_deadline = Instant::now() + Duration::from_secs(CONTRACT_UPDATE_TIMEOUT_SECS);
+        while !risk_manager.read().safety_open_contracts.is_empty()
+            && Instant::now() < drain_deadline
+        {
+            sleep(Duration::from_millis(100)).await;
+        }
+        anyhow::ensure!(
+            risk_manager.read().safety_open_contracts.is_empty(),
+            "open exposure did not drain before shutdown deadline"
+        );
+    }
+    let _ = runtime_shutdown.send(());
     let _ = api.shutdown_tx.send(());
-    heartbeat_task.abort();
-    let _ = heartbeat_task.await;
-    sleep(Duration::from_secs(2)).await;
+    join_runtime_tasks(
+        vec![
+            heartbeat_task,
+            strategy_task,
+            executor_task,
+            risk_task,
+            status_task,
+        ],
+        Duration::from_secs(10),
+    )
+    .await?;
+    tokio::time::timeout(Duration::from_secs(10), api.join())
+        .await
+        .context("WebSocket task did not join before shutdown timeout")??;
+    sleep(Duration::from_millis(100)).await;
+    journal_flush()?;
 
     let rm = risk_manager.read();
     log::info!("FINAL: {}", rm.summary());
@@ -1798,6 +1857,23 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn cooperative_runtime_tasks_are_all_joined() {
+        let (shutdown, _) = broadcast::channel::<()>(2);
+        let mut first_rx = shutdown.subscribe();
+        let mut second_rx = shutdown.subscribe();
+        let first = tokio::spawn(async move {
+            let _ = first_rx.recv().await;
+        });
+        let second = tokio::spawn(async move {
+            let _ = second_rx.recv().await;
+        });
+        let _ = shutdown.send(());
+        join_runtime_tasks(vec![first, second], Duration::from_secs(1))
+            .await
+            .unwrap();
+    }
 
     #[test]
     fn digit_helpers_and_stakes_stay_in_valid_ranges() {

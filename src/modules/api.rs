@@ -85,11 +85,11 @@ enum ApiEvent {
     },
 }
 
-#[derive(Clone)]
 struct ApiHandle {
     cmd_tx: mpsc::Sender<ApiCommand>,
     event_tx: broadcast::Sender<ApiEvent>,
     shutdown_tx: broadcast::Sender<()>,
+    task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ApiHandle {
@@ -102,6 +102,7 @@ impl ApiHandle {
             cmd_tx,
             event_tx,
             shutdown_tx,
+            task: None,
         }
     }
 
@@ -120,12 +121,12 @@ impl ApiHandle {
         let (event_tx, _) = broadcast::channel(4096);
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
-        let handle = Self::new(cmd_tx, event_tx.clone(), shutdown_tx.clone());
+        let mut handle = Self::new(cmd_tx, event_tx.clone(), shutdown_tx.clone());
         let ws_cmd_rx = cmd_rx;
         let ws_event_tx = event_tx;
         let ws_shutdown_rx = shutdown_tx.subscribe();
 
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             ws_task(
                 ws_url,
                 symbols,
@@ -141,8 +142,15 @@ impl ApiHandle {
             .await;
             log::info!("WebSocket task exited");
         });
-
+        handle.task = Some(task);
         Ok(handle)
+    }
+
+    async fn join(&mut self) -> Result<()> {
+        if let Some(task) = self.task.take() {
+            task.await.context("WebSocket task join failed")?;
+        }
+        Ok(())
     }
 }
 
@@ -166,8 +174,7 @@ async fn fetch_options_accounts(app_id: &str, token: &str) -> Result<Vec<Options
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Accounts API returned {}: {}", status, body);
+        anyhow::bail!("Accounts API returned HTTP {} (body redacted)", status);
     }
 
     let accounts_resp: OptionsAccountsResponse = resp
@@ -194,14 +201,14 @@ async fn request_otp(app_id: &str, token: &str, account_id: &str) -> Result<Stri
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("OTP API returned {}: {}", status, body);
+        anyhow::bail!("OTP API returned HTTP {} (body redacted)", status);
     }
 
     let otp_resp: OtpResponse = resp.json().await.context("Failed to parse OTP response")?;
 
     if let Some(err) = otp_resp.error {
-        anyhow::bail!("OTP API error: {}", err);
+        let _ = err;
+        anyhow::bail!("OTP API returned a provider error (details redacted)");
     }
     otp_resp
         .wss
@@ -408,15 +415,15 @@ async fn ws_task(
                                     })
                                 }
                                 ApiCommand::BuyContract { proposal_id, price } => {
-                                    log::info!("Buying: {} @ ${:.4}", proposal_id, price);
+                                    log::info!("Buying confirmed proposal @ ${:.4} (identifier redacted)", price);
                                     serde_json::json!({"buy": proposal_id, "price": price, "passthrough": {"kind": "buy", "proposal_id": proposal_id}})
                                 }
                                 ApiCommand::SellContract { contract_id } => {
-                                    log::info!("Selling: {}", contract_id);
+                                    log::info!("Selling tracked contract (identifier redacted)");
                                     serde_json::json!({"sell": contract_id, "price": 0, "passthrough": {"kind": "sell", "contract_id": contract_id}})
                                 }
                                 ApiCommand::SubscribeContract { contract_id } => {
-                                    log::info!("Subscribing to contract updates: {}", contract_id);
+                                    log::info!("Subscribing to tracked contract updates (identifier redacted)");
                                     serde_json::json!({"proposal_open_contract": 1, "contract_id": contract_id, "subscribe": 1, "passthrough": {"kind": "contract", "contract_id": contract_id}})
                                 }
                                 ApiCommand::RequestPortfolio => {
@@ -466,7 +473,7 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
     ) || v.get("error").is_some()
         || v.get("errors").is_some()
     {
-        log::info!("WS IN type={} json={}", msg_type, sanitized_json(&v));
+        log::debug!("WS IN type={} payload={}", msg_type, sanitized_json(&v));
     }
 
     let request_kind = v
@@ -499,11 +506,7 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
                 .and_then(|x| x.as_str())
                 .unwrap_or("UnknownError")
                 .to_string();
-            let message = err
-                .get("message")
-                .and_then(|x| x.as_str())
-                .unwrap_or("API error without message")
-                .to_string();
+            let message = "provider error details redacted".to_string();
             let _ = event_tx.send(ApiEvent::Error {
                 code,
                 message,
@@ -580,10 +583,7 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
             .unwrap_or_default()
             .to_string();
         if id.is_empty() || symbol.is_empty() || !ask_price.is_finite() || ask_price <= 0.0 {
-            log::warn!(
-                "Ignoring incomplete proposal response req_id={:?}",
-                v.get("req_id")
-            );
+            log::warn!("Ignoring incomplete proposal response (request identifier redacted)");
             return Ok(());
         }
         let _ = event_tx.send(ApiEvent::Proposal {
@@ -606,10 +606,7 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
             .map(json_f64)
             .filter(|price| price.is_finite() && *price > 0.0);
         if contract_id.is_empty() {
-            log::warn!(
-                "Ignoring buy success without contract_id req_id={:?}",
-                v.get("req_id")
-            );
+            log::warn!("Ignoring buy success without contract identifier (request identifier redacted)");
         } else {
             let _ = event_tx.send(ApiEvent::ContractOpened {
                 contract_id,
@@ -636,10 +633,7 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
                     sold_for,
                 });
             }
-            (false, None) => log::warn!(
-                "Ignoring sell response without settlement amount for {}",
-                contract_id
-            ),
+            (false, None) => log::warn!("Ignoring sell response without settlement amount (identifier redacted)"),
             _ => log::warn!("Ignoring sell response without contract_id"),
         }
         return Ok(());
@@ -763,7 +757,13 @@ fn sanitized_json(value: &serde_json::Value) -> String {
                             || lower.contains("authorization")
                             || lower.contains("secret")
                             || lower == "wss"
-                            || lower == "url";
+                            || lower == "url"
+                            || lower == "id"
+                            || lower.ends_with("_id")
+                            || lower.contains("account_id")
+                            || lower.contains("subscription_id")
+                            || lower.contains("proposal_id")
+                            || lower.contains("contract_id");
                         (
                             key.clone(),
                             if secret {

@@ -127,6 +127,15 @@ fn journal_event(kind: &str, details: serde_json::Value) {
     }
 }
 
+fn journal_flush() -> Result<()> {
+    if let Some(journal) = DECISION_JOURNAL.get() {
+        let mut writer = journal.writer.lock().map_err(|_| anyhow::anyhow!("decision journal lock poisoned"))?;
+        writer.flush()?;
+        writer.get_ref().sync_all()?;
+    }
+    Ok(())
+}
+
 fn suppress_journal_for_current_thread(suppressed: bool) {
     JOURNAL_SUPPRESSED.with(|value| value.set(suppressed));
 }

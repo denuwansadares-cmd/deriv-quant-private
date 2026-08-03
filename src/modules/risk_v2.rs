@@ -1,5 +1,4 @@
 static AUTHORITATIVE_RISK: std::sync::OnceLock<Arc<RwLock<RiskManager>>> = std::sync::OnceLock::new();
-static RUNTIME_LOCK: std::sync::OnceLock<fs::File> = std::sync::OnceLock::new();
 const STOP_STATE_NAME: &str = "stop-state.json";
 const MANUAL_STOP_NAME: &str = "emergency.stop";
 const HEARTBEAT_NAME: &str = "runtime-heartbeat";
@@ -50,9 +49,49 @@ fn atomic_secure_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     result
 }
 
-fn acquire_runtime_lock() -> Result<()> {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct RuntimeIdentity {
+    pid: u32,
+    process_start_ticks: u64,
+    boot_id: String,
+}
+
+fn process_start_ticks(pid: u32) -> std::io::Result<u64> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
+    let tail = stat.rsplit_once(')').map(|(_, tail)| tail.trim()).ok_or_else(|| std::io::Error::other("invalid proc stat"))?;
+    tail.split_whitespace().nth(19).ok_or_else(|| std::io::Error::other("missing proc start time"))?.parse().map_err(|_| std::io::Error::other("invalid proc start time"))
+}
+fn current_runtime_identity() -> std::io::Result<RuntimeIdentity> {
+    let pid = std::process::id();
+    Ok(RuntimeIdentity {
+        pid,
+        process_start_ticks: process_start_ticks(pid)?,
+        boot_id: fs::read_to_string("/proc/sys/kernel/random/boot_id")?.trim().to_string(),
+    })
+}
+fn runtime_identity_is_active(identity: &RuntimeIdentity) -> bool {
+    fs::read_to_string("/proc/sys/kernel/random/boot_id").ok().is_some_and(|value| value.trim() == identity.boot_id)
+        && process_start_ticks(identity.pid).ok() == Some(identity.process_start_ticks)
+}
+
+struct RuntimeLockGuard {
+    path: PathBuf,
+    identity: RuntimeIdentity,
+    _file: fs::File,
+}
+impl Drop for RuntimeLockGuard {
+    fn drop(&mut self) {
+        let owned = fs::read_to_string(&self.path).ok()
+            .and_then(|value| serde_json::from_str::<RuntimeIdentity>(&value).ok())
+            .is_some_and(|identity| identity == self.identity);
+        if owned { let _ = fs::remove_file(&self.path); }
+    }
+}
+
+fn acquire_runtime_lock() -> Result<RuntimeLockGuard> {
     let path = risk_path(LOCK_NAME);
     fs::create_dir_all(risk_state_dir())?;
+    let identity = current_runtime_identity()?;
     let open = || {
         use std::os::unix::fs::OpenOptionsExt;
         fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&path)
@@ -60,24 +99,23 @@ fn acquire_runtime_lock() -> Result<()> {
     let mut file = match open() {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            let existing = fs::read_to_string(&path).unwrap_or_default();
-            let active = existing.trim().parse::<u32>().ok()
-                .is_some_and(|pid| Path::new(&format!("/proc/{pid}")).exists());
+            let active = fs::read_to_string(&path).ok()
+                .and_then(|value| serde_json::from_str::<RuntimeIdentity>(&value).ok())
+                .is_some_and(|existing| runtime_identity_is_active(&existing));
             anyhow::ensure!(!active, "another trading runtime owns {}", path.display());
             fs::remove_file(&path)?;
             open()?
         }
         Err(error) => return Err(error.into()),
     };
-    use std::io::Write;
-    write!(file, "{}", std::process::id())?;
+    serde_json::to_writer(&mut file, &identity)?;
     file.sync_all()?;
-    RUNTIME_LOCK.set(file).map_err(|_| anyhow::anyhow!("runtime lock already held"))
+    Ok(RuntimeLockGuard { path, identity, _file: file })
 }
 
-fn init_risk_state(risk: Arc<RwLock<RiskManager>>) -> Result<()> {
+fn init_risk_state(risk: Arc<RwLock<RiskManager>>) -> Result<RuntimeLockGuard> {
     fs::create_dir_all(risk_state_dir())?;
-    acquire_runtime_lock()?;
+    let runtime_lock = acquire_runtime_lock()?;
     AUTHORITATIVE_RISK.set(risk.clone()).map_err(|_| anyhow::anyhow!("authoritative risk state already initialized"))?;
     let stop_path = risk_path(STOP_STATE_NAME);
     let manual = risk_path(MANUAL_STOP_NAME).exists();
@@ -93,7 +131,7 @@ fn init_risk_state(risk: Arc<RwLock<RiskManager>>) -> Result<()> {
         risk.write().engage_stop(reason.clone());
         persist_risk_stop(&reason);
     }
-    Ok(())
+    Ok(runtime_lock)
 }
 
 fn mark_persistence_failure(context: &str, error: &std::io::Error) {
@@ -175,10 +213,10 @@ fn risk_v2_pre_trade(command: &ApiCommand) -> std::result::Result<(), String> {
         | ApiCommand::RequestRiseFall { amount, .. } => {
             let stake = Money::from_api(*amount).ok_or_else(|| "invalid stake".to_string())?;
             let expected_loss_limit = (risk.verified_balance.0 / 100).max(MIN_STAKE_MINOR);
-            let market_budget = (risk.verified_balance.0 * 2 / 100).max(MIN_STAKE_MINOR);
+            let market_budget = (risk.verified_balance.0 * risk.runtime_config.max_open_exposure_bps / 10_000).max(MIN_STAKE_MINOR);
             let family_budget = (risk.verified_balance.0 * 5 / 100).max(MIN_STAKE_MINOR);
             let maximum_exposure = market_budget;
-            if stake.0 > HARD_MAX_STAKE_MINOR { return Err("hard stake ceiling".into()); }
+            if stake.0 > risk.runtime_config.max_stake_minor { return Err("hard stake ceiling".into()); }
             if stake.0 > expected_loss_limit { return Err("expected-loss ceiling".into()); }
             if stake.0 > market_budget || stake.0 > family_budget { return Err("market/family budget".into()); }
             let open_exposure = risk.safety_open_contracts.values().map(|money| money.0).sum::<i64>();
@@ -192,9 +230,12 @@ fn risk_v2_pre_trade(command: &ApiCommand) -> std::result::Result<(), String> {
             };
             if final_price != confirmed_price { return Err("final buy price differs from confirmed proposal".into()); }
             if now.saturating_sub(confirmed_at) > PROPOSAL_MAX_AGE_SECS as i64 * 1000 { return Err("proposal expired before buy".into()); }
-            let maximum_exposure = (risk.verified_balance.0 * 2 / 100).max(MIN_STAKE_MINOR);
+            let maximum_exposure = (risk.verified_balance.0 * risk.runtime_config.max_open_exposure_bps / 10_000).max(MIN_STAKE_MINOR);
             let open_exposure = risk.safety_open_contracts.values().map(|money| money.0).sum::<i64>();
-            if final_price.0 > HARD_MAX_STAKE_MINOR || open_exposure.saturating_add(final_price.0) > maximum_exposure {
+            if risk.safety_open_contracts.len() >= risk.runtime_config.max_open_contracts {
+                return Err("one-open-contract limit".into());
+            }
+            if final_price.0 > risk.runtime_config.max_stake_minor || open_exposure.saturating_add(final_price.0) > maximum_exposure {
                 return Err("buy-time price/exposure ceiling".into());
             }
         }
@@ -204,7 +245,12 @@ fn risk_v2_pre_trade(command: &ApiCommand) -> std::result::Result<(), String> {
 }
 fn risk_v2_contract_opened(contract_id: &str, cost: f64) {
     if let (Some(risk), Some(cost)) = (AUTHORITATIVE_RISK.get(), Money::from_api(cost)) {
-        risk.write().safety_open_contracts.insert(contract_id.to_string(), cost);
+        let mut risk = risk.write();
+        let duplicate = risk.safety_open_contracts.contains_key(contract_id);
+        if !duplicate && risk.safety_open_contracts.len() >= risk.runtime_config.max_open_contracts {
+            risk.engage_stop("open-contract cardinality invariant failed");
+        }
+        risk.safety_open_contracts.insert(contract_id.to_string(), cost);
     }
 }
 fn risk_v2_contract_closed(contract_id: &str, pnl: f64) {
@@ -220,7 +266,7 @@ fn risk_v2_post_trade_invariants() {
     if let Some(risk) = AUTHORITATIVE_RISK.get() {
         let risk = risk.read();
         let exposure = risk.safety_open_contracts.values().map(|money| money.0).sum::<i64>();
-        let maximum = (risk.verified_balance.0 * 2 / 100).max(MIN_STAKE_MINOR);
+        let maximum = (risk.verified_balance.0 * risk.runtime_config.max_open_exposure_bps / 10_000).max(MIN_STAKE_MINOR);
         if exposure < 0 || exposure > maximum { drop(risk); risk_v2_stop("post-trade exposure invariant failed"); }
     }
 }
