@@ -8,7 +8,7 @@ The original human-authored source code, documentation, selection, arrangement, 
 
 No right to use, copy, modify, deploy, publish, distribute, sublicense, sell, assign, transfer, disclose, or create derivative works is granted except under a separate written licence signed by the copyright owner and the applicable licensee.
 
-A signed usage licence may grant limited rights while ownership remains with PANAMULLA ARACHCHIGE SADARES DENUWAN. Rights not expressly granted are reserved.
+The selected draft proposes an exclusive usage licence for one specifically identified delivered release after its effectiveness conditions are satisfied. Ownership remains with PANAMULLA ARACHCHIGE SADARES DENUWAN, no intellectual-property assignment is made, and all rights not expressly granted are reserved.
 
 ## Exclusions
 

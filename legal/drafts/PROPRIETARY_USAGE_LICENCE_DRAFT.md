@@ -1,17 +1,17 @@
-# Proprietary source-code usage licence agreement
+# Exclusive proprietary source-code usage licence agreement
 
 **DRAFT ONLY — NOT SIGNED — NO RIGHTS GRANTED**
 
-This Proprietary Source-Code Usage Licence Agreement (“Agreement”) is proposed between:
+This Exclusive Proprietary Source-Code Usage Licence Agreement (“Agreement”) is proposed between:
 
 - **Licensor:** PANAMULLA ARACHCHIGE SADARES DENUWAN, of [ADDRESS] (“Licensor”); and
 - **Licensee:** [BUYER FULL LEGAL NAME], [ENTITY TYPE / JURISDICTION / REGISTRATION NUMBER], of [ADDRESS] (“Licensee”).
 
-Proposed effective date: [DATE]. This draft is not effective until all material blanks and schedules are completed and both parties sign it.
+Proposed effective date: [DATE]. This draft is not effective and grants no rights unless and until the conditions in Section 6.4 are all satisfied.
 
 ## 1. Definitions
 
-**Licensed Product** means only the source-code snapshot, documentation, tests, and other items expressly checked in Schedule 1 and bound to the stated Git commit and SHA-256 manifest.
+**Licensed Product** means only the specifically identified delivered release: the source-code snapshot, documentation, tests, and other items expressly checked in Schedule 1 and bound to the stated Git commit, source-archive SHA-256, and accepted delivery manifest. It does not include earlier releases, later releases, or independently developed software.
 
 **Excluded Assets** means the items in Schedule 2, whether or not they exist on a development machine.
 
@@ -31,32 +31,43 @@ Proposed effective date: [DATE]. This draft is not effective until all material 
 
 2.5 Licensee owns independently copyrightable material it creates from scratch, but any use of Licensor code within a modification or derivative version remains subject to this Agreement.
 
-## 3. Conditional licence grant
+## 3. Exclusive conditional licence grant
 
-3.1 Subject to full cleared payment of [LICENCE FEE AND CURRENCY], written acceptance, and continued compliance, Licensor grants Licensee a perpetual, worldwide, **non-exclusive**, non-transferable, non-sublicensable licence to:
+3.1 Only after every effectiveness condition in Section 6.4 is satisfied, Licensor grants the named Licensee an **exclusive, perpetual, worldwide, fully paid**, non-transferable, and non-sublicensable usage licence to the specifically identified Licensed Product.
+
+3.2 The exclusive licence permits Licensee to:
 
 - possess one controlled source repository and reasonable encrypted backups;
-- use and reproduce the source internally for development, testing, maintenance, and deployment;
-- modify the source for Licensee’s own permitted use;
+- use, deploy, and operate the Licensed Product for Licensee’s own lawful internal and commercial operations;
+- reproduce the Licensed Product as reasonably necessary for those operations, testing, maintenance, backup, and deployment;
+- modify the source code for Licensee’s own lawful internal and commercial operations;
 - compile and deploy executable versions on infrastructure owned or controlled by Licensee; and
-- allow Licensee’s end users to interact with a hosted service powered by the executable, provided no source code, sublicense, or standalone copy is supplied to them.
+- allow Licensee’s customers and end users to interact with Licensee-operated executable services, provided Licensee does not give them source code, a standalone copy, a sublicense, white-label rights, or rights equivalent to those granted to Licensee.
 
-3.2 Employees and individual contractors may receive need-to-know access solely to exercise Licensee’s rights if bound by written confidentiality and use restrictions at least as protective as this Agreement. Licensee remains responsible for them.
+3.3 After the exclusive licence becomes effective, Licensor must not sell, license, distribute, or commercially provide the same specifically identified delivered Licensed Product to another buyer within the scope of this exclusive licence. This restriction applies to that delivered release; it does not transfer copyright or ownership to Licensee.
 
-3.3 No exclusivity is granted. Licensor may continue to use, modify, develop, support, sell, and license Licensor’s technology to others.
+3.4 Licensee may permit its employees and individual contractors to access source code only on a need-to-know basis to exercise Licensee’s rights, if they are bound by written confidentiality and use restrictions at least as protective as this Agreement. Licensee remains responsible for their acts and omissions. This access is not a sublicense or transfer.
+
+3.5 Licensor may retain protected archival copies solely for legal and compliance records, licence enforcement, security maintenance, backup, and providing the agreed support to Licensee. Licensor must protect those copies and must not sell, license, distribute, or otherwise commercially provide the retained Licensed Product to another buyer.
+
+3.6 No right is implied. Any use outside Section 3.2 requires a separate written agreement signed by Licensor.
 
 ## 4. Restrictions
 
-Licensee must not, without Licensor’s prior signed consent:
+Licensee must not, without a separate written agreement signed by Licensor:
 
-- publish, disclose, sell, rent, distribute, sublicense, or provide the source code to another person;
-- operate a source-code marketplace, template, white-label source package, SDK, or resale product based on the Licensed Product;
-- assign or transfer this Agreement, including through asset sale, merger, or change of control;
-- claim ownership of Licensor’s original material;
-- remove copyright, proprietary, or third-party notices from source distributions;
+- resell, sublicense, rent, assign, or transfer the Licensed Product or this Agreement;
+- publicly distribute, publish, disclose, or provide the source code to another person or company;
+- white-label the Licensed Product for third parties or provide a source-code template, SDK, development kit, repository, or substantially similar source product;
+- permit another person or company to independently deploy, operate, possess, or control a copy of the source code or Licensed Product;
+- use a merger, change of control, asset sale, outsourcing arrangement, affiliate, contractor, or hosted-access arrangement to avoid these restrictions;
+- claim ownership of Licensor’s copyright or intellectual property;
+- remove copyright, proprietary, or third-party notices from source copies;
 - use Third-Party Materials contrary to their applicable terms;
 - include any Excluded Asset in a delivery or deployment; or
 - use the Licensed Product for unlawful conduct or to misrepresent verified performance, provider approval, or regulatory status.
+
+Permitted employee and individual-contractor access under Section 3.4 is not prohibited by this Section.
 
 ## 5. Data, credentials, and provider exclusions
 
@@ -68,15 +79,23 @@ Licensee must not, without Licensor’s prior signed consent:
 
 5.4 Provider terms may restrict storage, caching, use, and redistribution. Licensee is solely responsible for current provider compliance after delivery.
 
-## 6. Delivery, inspection, and acceptance
+## 6. Delivery, inspection, acceptance, and effectiveness
 
-6.1 After [PAYMENT/ESCROW TRIGGER], Licensor will deliver the checked Schedule 1 items through [SECURE CHANNEL].
+6.1 After [ESCROW FUNDING / INSPECTION DELIVERY TRIGGER], Licensor will provide the checked Schedule 1 items through [SECURE CHANNEL] solely for inspection and acceptance testing. Before effectiveness under Section 6.4, Licensee receives no production, commercial-use, sublicensing, transfer, or ownership right.
 
-6.2 Licensee will have [FIVE] Business Days after confirmed delivery to run the stated acceptance tests. Any rejection must identify a Material Defect with reproducible steps and redacted evidence.
+6.2 Licensee will have [ACCEPTANCE PERIOD] after confirmed inspection delivery to run the stated acceptance tests. Any rejection must identify a Material Defect with reproducible steps and redacted evidence.
 
-6.3 Acceptance occurs as specified in the final Buyer Acceptance Certificate. Production or commercial use constitutes acceptance unless prohibited by mandatory law.
+6.3 Acceptance must identify the final delivery by source-archive SHA-256 and be recorded in the final Buyer Acceptance Certificate. Any deemed-acceptance rule, including production or commercial use, must be stated in the final negotiated agreement and reviewed by counsel.
 
-6.4 For a timely valid Material Defect, Licensor may correct, replace, or provide a reasonable workaround. Payment/escrow remedies must be stated consistently in the final agreement and escrow instructions.
+6.4 The exclusive licence becomes effective only when all three conditions have occurred:
+
+- Licensor has received full cleared payment or confirmed final escrow release of [LICENCE FEE AND CURRENCY];
+- both Licensor and Licensee have signed the final agreement; and
+- Licensee has accepted the final delivery identified by SHA-256 in the final Buyer Acceptance Certificate.
+
+6.5 If any Section 6.4 condition is missing, no licence is effective and no rights are granted. Escrow funding alone is not payment or licence effectiveness unless the final agreement expressly states otherwise.
+
+6.6 For a timely valid Material Defect, Licensor may correct, replace, or provide a reasonable workaround. Payment, escrow, rejection, and refund terms must be stated consistently in the final agreement and escrow instructions.
 
 ## 7. Thirty-day support
 
@@ -114,7 +133,7 @@ Confidentiality does not cover information demonstrably public without breach, p
 
 ## 12. Term and termination
 
-12.1 The licence is perpetual after the conditions in Section 3 are satisfied, unless terminated for uncured material breach.
+12.1 The exclusive licence is perpetual only after every condition in Section 6.4 is satisfied, unless terminated for uncured material breach.
 
 12.2 Proposed cure period: [30] days after detailed written notice. An incurable deliberate source disclosure or unauthorized sublicense may permit immediate termination to the extent lawful.
 
@@ -122,11 +141,11 @@ Confidentiality does not cover information demonstrably public without breach, p
 
 ## 13. Governing law and disputes
 
-Proposed governing law: Sri Lanka.  
-Proposed exclusive forum: competent courts in Colombo, Sri Lanka.  
-Proposed pre-action good-faith negotiation period: [30] days.
+Governing law: [GOVERNING LAW — BLANK PENDING NEGOTIATION AND LAWYER REVIEW]
+Court, arbitration forum, and jurisdiction: [BLANK PENDING NEGOTIATION AND LAWYER REVIEW]
+Pre-action negotiation process and period: [BLANK PENDING NEGOTIATION AND LAWYER REVIEW]
 
-These choices require transaction-specific review, particularly if the buyer is outside Sri Lanka. Urgent protective relief may be sought where legally available.
+No governing law, forum, or jurisdiction is selected by this draft. Urgent protective relief and dispute procedure must be reviewed by qualified counsel before execution.
 
 ## 14. General
 
@@ -141,6 +160,7 @@ Complete before signature.
 - Git commit: [FULL HASH]
 - Source archive/SHA-256: [FILENAME / HASH]
 - Evidence manifest/signature: [FILES / HASHES]
+- Accepted final delivery SHA-256: [SHA-256]
 - Supported OS/architecture/toolchain: [DETAILS]
 - Acceptance commands and expected results: [DETAILS]
 - [ ] Bot source
@@ -154,6 +174,8 @@ Complete before signature.
 - [ ] Secret-free environment example
 - [ ] Thirty-day support terms
 - [ ] Other: [DETAILS]
+
+Exclusive scope: only the specifically identified delivered release listed above. Any broader product-family, derivative-work, field-of-use, market, or technology restriction requires a separately negotiated written clause reviewed by counsel.
 
 ## Schedule 2 — excluded assets
 
@@ -171,13 +193,13 @@ Excluded regardless of local presence:
 
 LICENSOR
 
-Name: PANAMULLA ARACHCHIGE SADARES DENUWAN  
-Signature: ______________________________  
+Name: PANAMULLA ARACHCHIGE SADARES DENUWAN
+Signature: ______________________________
 Date: __________________________________
 
 LICENSEE
 
-Legal name: [BUYER LEGAL NAME]  
-Authorized signatory/title: [NAME / TITLE]  
-Signature: ______________________________  
+Legal name: [BUYER LEGAL NAME]
+Authorized signatory/title: [NAME / TITLE]
+Signature: ______________________________
 Date: __________________________________

@@ -6,6 +6,23 @@ stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/source" "$stage/evidence" "$stage/legal" "$stage/media" "$stage/scripts" "$out"
 cd "$root"
+final_licence="${FINAL_BUYER_LICENCE:-}"
+if [[ -z "$final_licence" || ! -f "$final_licence" ]]; then
+  echo "FINAL_BUYER_LICENCE must identify the one lawyer-reviewed, non-draft licence" >&2
+  exit 1
+fi
+if [[ "${FINAL_BUYER_LICENCE_REVIEWED:-}" != "YES" ]]; then
+  echo "FINAL_BUYER_LICENCE_REVIEWED=YES is required after qualified legal review" >&2
+  exit 1
+fi
+if [[ "$(realpath "$final_licence")" == "$(realpath "$root/LICENSE")" ]]; then
+  echo "The superseded root LICENSE is excluded from buyer releases" >&2
+  exit 1
+fi
+if grep -Eqi 'DRAFT|NOT SIGNED|SUPERSEDED' "$final_licence"; then
+  echo "Buyer licence still appears to be a draft or superseded template" >&2
+  exit 1
+fi
 cargo cyclonedx --format json
 cp Cargo.toml Cargo.lock Dockerfile docker-compose.yml PRODUCT_API.md BACKTESTING.md CLAIMS.md BUYER_ONBOARDING.md "$stage/source/"
 mkdir -p "$stage/source/src"
@@ -14,7 +31,12 @@ cp -R src/modules src/bin "$stage/source/src/"
 cp -R config schemas web fixtures "$stage/source/"
 cp SECURITY_EVIDENCE.md THIRD_PARTY_LICENSES.md THIRD_PARTY_LICENSES.tsv "$stage/evidence/"
 cp deriv_bot.cdx.json "$stage/evidence/SBOM.cdx.json"
-cp LICENSE COPYRIGHT AUTHORSHIP_DECLARATION.md "$stage/legal/"
+cp "$final_licence" "$stage/legal/EXCLUSIVE_PROPRIETARY_USAGE_LICENCE.md"
+cp COPYRIGHT AUTHORSHIP_DECLARATION.md "$stage/legal/"
+if [[ "$(find "$stage/legal" -maxdepth 1 -type f -iname '*licen*' | wc -l)" -ne 1 ]]; then
+  echo "Buyer package must contain exactly one lawyer-reviewed licence" >&2
+  exit 1
+fi
 cp AUDIT.md "$stage/legal/DERIV_API_TERMS_ENGINEERING_MEMO.md"
 cp scripts/reproducible-build.sh "$stage/scripts/"
 cp data-room/*.md "$stage/"

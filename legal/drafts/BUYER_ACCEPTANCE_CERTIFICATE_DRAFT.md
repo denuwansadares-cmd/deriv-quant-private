@@ -2,7 +2,7 @@
 
 **DRAFT ONLY — NOT ACCEPTED OR SIGNED**
 
-This certificate relates to the proposed Proprietary Usage Licence between **PANAMULLA ARACHCHIGE SADARES DENUWAN** (“Licensor”) and **[BUYER LEGAL NAME]** (“Licensee”). It has no effect unless completed and signed consistently with the final licence agreement.
+This certificate relates to the proposed Exclusive Proprietary Usage Licence between **PANAMULLA ARACHCHIGE SADARES DENUWAN** (“Licensor”) and **[BUYER LEGAL NAME]** (“Licensee”). It has no effect unless completed and signed consistently with the final licence agreement.
 
 ## 1. Delivery identification
 
@@ -80,7 +80,7 @@ Select exactly one:
 - [ ] **Accepted.** The identified delivery materially satisfies the signed acceptance criteria.
 - [ ] **Rejected for a claimed Material Defect.** Complete Section 6 within the contractual acceptance period.
 
-No checkbox is pre-selected. Silence, production use, or expiry of the acceptance period has only the effect stated in the final signed licence.
+No checkbox is pre-selected. Acceptance alone does not make the licence effective; every payment, signature, and SHA-256-bound acceptance condition in the final agreement must also be satisfied. Silence, production use, or expiry has only the effect stated in the final lawyer-reviewed agreement.
 
 ## 6. Material-defect notice, if applicable
 
@@ -96,7 +96,7 @@ Trading outcome, provider changes/outages, unsupported modifications, absent fut
 
 ## 7. Buyer acknowledgements
 
-The Licensee acknowledges that ownership remains with PANAMULLA ARACHCHIGE SADARES DENUWAN; only the signed usage licence grants rights. The product is not financial advice and no profitability, win rate, uninterrupted service, provider availability, data licence, or real-money suitability is promised.
+The Licensee acknowledges that ownership remains with PANAMULLA ARACHCHIGE SADARES DENUWAN; no intellectual-property assignment is made, and only the effective signed exclusive usage licence grants rights. The product is not financial advice and no profitability, win rate, uninterrupted service, provider availability, data licence, or real-money suitability is promised.
 
 Licensee legal name: [BUYER LEGAL NAME]  
 Authorized signatory/title: [NAME / TITLE]  

@@ -31,9 +31,10 @@ I, **PANAMULLA ARACHCHIGE SADARES DENUWAN**, declare the following to the best o
 
 Complete every line; use “None” only after checking.
 
+AI-assisted development tools were used during debugging, remediation, and engineering support under the Owner’s direction and review.
+
 - Prior employers or employment-created work: [DETAILS / NONE]
 - Contractors or collaborators: [DETAILS / NONE]
-- AI-assisted or automated development tools: [DETAILS / NONE]
 - Pre-existing code incorporated into the project: [DETAILS / NONE]
 - Third-party proprietary materials: [DETAILS / NONE]
 - Open-source and source-available materials: [REFERENCE FINAL SBOM/NOTICE]

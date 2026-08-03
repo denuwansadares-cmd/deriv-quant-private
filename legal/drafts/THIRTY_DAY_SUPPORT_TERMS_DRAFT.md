@@ -2,7 +2,7 @@
 
 **DRAFT ONLY — NOT SIGNED — NO SUPPORT OBLIGATION YET EXISTS**
 
-These terms supplement the final signed Proprietary Usage Licence between **PANAMULLA ARACHCHIGE SADARES DENUWAN** (“Licensor”) and **[BUYER LEGAL NAME]** (“Licensee”). If there is a conflict, the final signed licence controls unless it expressly states otherwise.
+These terms supplement the final signed Exclusive Proprietary Usage Licence between **PANAMULLA ARACHCHIGE SADARES DENUWAN** (“Licensor”) and **[BUYER LEGAL NAME]** (“Licensee”). If there is a conflict, the final signed licence controls unless it expressly states otherwise.
 
 ## 1. Support period
 
@@ -69,7 +69,7 @@ Business hours: [DAYS/HOURS/TIME ZONE], excluding [HOLIDAYS]. No 24/7 coverage i
 
 ## 6. Fixes and ownership
 
-Licensor retains ownership of Licensor-authored corrections, patches, and documentation supplied under these terms. The Licensee receives the same usage rights in those items as apply to the Licensed Product, unless a signed amendment states otherwise.
+Licensor retains ownership of Licensor-authored corrections, patches, and documentation supplied under these terms. The Licensee receives the same exclusive usage rights in release-specific corrections incorporated into the accepted Licensed Product, unless a signed amendment states otherwise. General know-how and independently developed tools are not transferred or assigned.
 
 No support communication changes ownership, licence scope, acceptance criteria, price, warranty, or liability unless both parties sign a written amendment.
 
