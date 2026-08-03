@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "warning": "Fail-closed registry. Do not set enabled_requested=true without independently reviewed holdout evidence.",
+  "models": []
+}

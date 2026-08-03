@@ -1,0 +1,22 @@
+services:
+  dashboard:
+    build: .
+    environment:
+      DERIV_RISK_STATE_DIR: /var/lib/deriv-risk
+      DERIV_DASHBOARD_BIND: 0.0.0.0:8080
+      DERIV_DASHBOARD_TOKEN: ${DERIV_DASHBOARD_TOKEN:?set a random 32+ character token}
+      DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX: ${DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX:?set an expiry timestamp}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - deriv-risk:/var/lib/deriv-risk
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+volumes:
+  deriv-risk:

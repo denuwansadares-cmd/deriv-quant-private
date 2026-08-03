@@ -1,0 +1,39 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Rust build output
+target/
+
+# Application-managed, short-lived API records
+data/api-records/
+data/audit/
+
+# Runtime safety state and derived local datasets
+.risk/
+history-normalized/
+data/normalized/
+data/provenance/private/
+
+# Local historical data is not a transferable source asset by default
+data/history/
+*.csv
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local permanent source archives and generated delivery bundles
+backups/
+buyer-data-room/
+
+# Local reports and secrets-scanner output
+reports/private/
+*.log

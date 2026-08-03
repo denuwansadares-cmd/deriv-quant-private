@@ -1,0 +1,239 @@
+EXCLUSIVE PROPRIETARY COMMERCIAL SOURCE CODE LICENCE AGREEMENT
+
+DRAFT — BUYER DETAILS, DELIVERY DETAILS, AND SIGNATURES REQUIRED
+
+This Exclusive Proprietary Commercial Source Code Licence Agreement (the “Agreement”) is entered into as of [EFFECTIVE DATE] (the “Effective Date”) by and between:
+
+Licensor: PANAMULLA ARACHCHIGE SADARES DENUWAN, an individual resident of Sri Lanka, of [LICENSOR ADDRESS] (“Licensor”); and
+
+Licensee: [BUYER FULL LEGAL NAME], [an individual / a company incorporated under the laws of JURISDICTION with registration number NUMBER], of [BUYER ADDRESS] (“Licensee”).
+
+Licensor and Licensee are each a “Party” and together the “Parties”. This Agreement is not effective until the buyer details, delivery details, and Effective Date are completed and both Parties have signed it.
+
+1. DEFINITIONS
+
+1.1 “Licensed Product” means the Deriv-specific trading-bot source-code snapshot identified by the delivery commit hash or archive checksum in Schedule 1, together with the documentation, tests, and other items expressly marked “Included” in Schedule 1. It excludes Reserved Technology, Excluded Assets, Third-Party Materials, and later versions unless expressly added by a signed amendment.
+
+1.2 “Deriv-Specific Field” means software whose primary purpose is to connect to Deriv APIs and provide the functionality of the Licensed Product. It does not include generic trading, simulation, risk, networking, dashboard, or development technology used outside a Deriv-specific product.
+
+1.3 “Reserved Technology” means Licensor’s generic simulator framework, generic risk-engine components, generic WebSocket and reconnection utilities, generic dashboard utilities, pre-existing code, development tools, methods, know-how, and reusable libraries, including improvements that are not specific to the Licensed Product.
+
+1.4 “Third-Party Materials” means software, APIs, data, trademarks, documentation, and other materials owned or controlled by third parties, including Rust crates and Deriv services or content.
+
+1.5 “Excluded Assets” means all items listed in Schedule 2.
+
+1.6 “Material Defect” means a reproducible failure of the delivered Licensed Product, as delivered and used in the documented supported environment, to materially conform to an express acceptance criterion in Schedule 1. A missing future feature, trading outcome, provider change, unsupported environment, or item disclosed in the known-limitations document is not a Material Defect.
+
+2. OWNERSHIP AND RESERVATION OF RIGHTS
+
+2.1 Copyright © 2026 PANAMULLA ARACHCHIGE SADARES DENUWAN. All rights reserved.
+
+2.2 Licensor retains all copyright and ownership in the Licensed Product and Reserved Technology. This Agreement is a licence, not a copyright assignment or full intellectual-property sale.
+
+2.3 Licensee owns its original modifications to the extent those modifications are independently copyrightable, but receives no ownership of the Licensed Product, Reserved Technology, or underlying Licensor code. Licensee’s modifications remain subject to this Agreement wherever they incorporate, derive from, or require the Licensed Product.
+
+2.4 Licensor retains the unrestricted right to use, develop, and license Reserved Technology and to use it in non-Deriv projects. Subject to Section 3.2, Licensor will not license the exact Licensed Product or a substantially identical Deriv-specific product to another buyer during the Term.
+
+2.5 All rights not expressly granted are reserved. Moral rights remain with their lawful owner to the extent they cannot be waived or transferred. To the extent permitted by law, Licensor consents to the modifications, customization, and rebranding expressly authorized by this Agreement and will not assert moral rights solely to prevent those authorized acts.
+
+3. LICENCE GRANT AND EXCLUSIVITY
+
+3.1 Subject to full payment and continued compliance with this Agreement, Licensor grants Licensee a perpetual, worldwide, exclusive within the Deriv-Specific Field, non-transferable, and non-sublicensable licence to:
+
+(a) possess and use the Licensed Product source code internally;
+(b) reproduce the Licensed Product as reasonably necessary for development, testing, backup, and deployment;
+(c) modify, customize, rebrand, and create derivative versions of the Licensed Product;
+(d) compile and deploy the Licensed Product within infrastructure owned or controlled by Licensee; and
+(e) commercially provide functionality powered by the Licensed Product to Licensee’s customers as a hosted SaaS or managed service, provided customers receive neither source code nor a sublicense.
+
+3.2 Exclusivity applies only to the exact Licensed Product and substantially identical Deriv-specific versions of it. Exclusivity does not prevent Licensor from using, developing, selling, or licensing Reserved Technology; providing general software-development services; building non-Deriv products; or complying with licences governing Third-Party Materials.
+
+3.3 Licensee may allow its employees and individual contractors to access source code solely on a need-to-know basis to exercise the granted rights, provided they are bound in writing by confidentiality and use restrictions at least as protective as this Agreement. Licensee remains responsible for their acts and omissions. This permission is not a sublicense.
+
+3.4 Licensee may not:
+
+(a) sell, publish, disclose, distribute, or make the raw source code available as a standalone product or repository;
+(b) sublicense the Licensed Product or grant another person rights equivalent to those granted here;
+(c) sell or distribute a source-code template, white-label source package, development kit, or substantially similar source product derived from the Licensed Product;
+(d) represent that Licensee owns Licensor’s original copyright or Reserved Technology;
+(e) remove copyright, third-party attribution, or proprietary notices, except that customer-facing branding may be changed as permitted by Section 3.1(c);
+(f) use or distribute any Third-Party Material contrary to its applicable terms; or
+(g) transfer this Agreement except under Section 4.
+
+3.5 A full source-code resale, copyright assignment, or “full IP” transaction is not included. The Parties may negotiate a separate written transaction, presently contemplated at USD 22,500, but no such rights arise unless a separate agreement is executed and paid in full.
+
+4. TRANSFER AND CHANGE OF CONTROL
+
+4.1 Licensee may not assign or transfer this Agreement, whether voluntarily, by operation of law, through sale of assets, merger, change of control, or otherwise, without Licensor’s prior written consent.
+
+4.2 Licensor may condition consent on due diligence, the transferee’s written assumption of this Agreement, payment of reasonable administrative costs, and confirmation that no provider credential, account, dataset, or non-transferable third-party right is included.
+
+4.3 Any attempted transfer contrary to this Section is void to the extent permitted by law.
+
+5. THIRD-PARTY MATERIALS, DATA, AND PROVIDER ACCESS
+
+5.1 Third-Party Materials are not owned by Licensor and are governed solely by their respective licences and terms. The dependency inventory supplied with the Licensed Product is informational and does not replace applicable licence texts or notices.
+
+5.2 No Deriv account, application registration, App ID, OAuth registration, personal access token, access token, OTP, account balance, rate-limit allocation, contractual permission, trademark right, or API entitlement is licensed or transferred. Licensee must create and maintain its own provider registration and credentials and comply with current provider terms.
+
+5.3 No historical CSV dataset, raw WebSocket recording, API-derived cache, personal data, account data, real-money result, or third-party paid licence is included unless separately identified in a signed schedule with documented transfer rights. Licensee is responsible for lawful data sourcing, retention, deletion, and use.
+
+5.4 Provider terms, endpoints, authentication, availability, instruments, and usage limits may change. Licensee bears the cost and responsibility of maintaining provider compliance after acceptance.
+
+6. PRICE, ESCROW, TAXES, AND FEES
+
+6.1 The licence price is USD 12,500 net to Licensor (the “Licence Fee”).
+
+6.2 Licensee will fully fund the Licence Fee with [ESCROW PROVIDER] under mutually approved escrow instructions before delivery of the complete Schedule 1 package.
+
+6.3 Licensee is responsible for escrow charges, transfer fees, intermediary-bank charges, receiving-bank deductions, withholding administration, and currency-conversion costs so that Licensor receives USD 12,500 net, except for taxes imposed on Licensor’s net income. If applicable law requires withholding, Licensee will provide official evidence and cooperate in obtaining any lawful relief or credit.
+
+6.4 The licence grant in Section 3 becomes effective only when the Licence Fee has been irrevocably released and received in full by Licensor. Before then, Licensee may inspect the delivery solely for acceptance and gains no production or commercial-use right.
+
+7. DELIVERY AND ACCEPTANCE
+
+7.1 After escrow is fully funded, Licensor will deliver the items marked “Included” in Schedule 1 through the agreed secure channel.
+
+7.2 Licensee has five (5) Business Days after confirmed delivery (the “Acceptance Period”) to run the documented acceptance tests and give written notice of a Material Defect. The notice must identify the failed criterion, environment, reproduction steps, relevant logs with secrets removed, and observed result.
+
+7.3 The delivery is accepted upon the earliest of: (a) Licensee’s written acceptance; (b) commercial or production use; or (c) expiry of the Acceptance Period without a valid Material Defect notice. The Parties will instruct escrow to release the Licence Fee immediately upon acceptance.
+
+7.4 For a timely valid Material Defect notice, Licensor will use reasonable efforts to cure the defect or provide a conforming replacement. Support or cure work does not delay release for accepted items or for issues that are not Material Defects. Escrow release mechanics must be stated consistently in the separate escrow instructions.
+
+8. LIMITED SUPPORT
+
+8.1 The included support period is thirty (30) calendar days starting on the date the Licence Fee is released (“Support Period”).
+
+8.2 Support covers reasonable remote diagnosis and correction of reproducible defects in the delivered Licensed Product. It excludes new features, strategy changes, performance tuning, data acquisition, hosting, deployment administration, provider changes, OAuth registration, third-party outages, unsupported modifications, and real-money trading operations.
+
+8.3 Support does not extend the Acceptance Period or delay payment release. Future updates and services require a separate written agreement.
+
+9. CONFIDENTIALITY AND SECURITY
+
+9.1 Each Party will protect the other Party’s non-public technical, commercial, and personal information using at least reasonable care and use it only to perform this Agreement.
+
+9.2 Licensee will restrict source access, use secure credential management, and ensure no seller credential or excluded data is imported into its systems. Neither Party will send credentials through the delivery package or defect reports.
+
+9.3 Confidentiality does not apply to information that the receiving Party can demonstrate was lawfully public, already known without restriction, independently developed, or lawfully obtained from another source without duty.
+
+10. LICENSOR OWNERSHIP WARRANTY
+
+10.1 Licensor warrants that, to Licensor’s knowledge after reasonable inquiry, Licensor owns or controls the rights in Licensor’s original portions of the Licensed Product necessary to grant this Agreement and has not knowingly copied third-party proprietary source code into those portions without authorization.
+
+10.2 Section 10.1 does not cover Third-Party Materials, provider content, Licensee modifications, external datasets, or combinations not supplied by Licensor. Licensee’s exclusive remedy for a proven breach is, at Licensor’s option, obtaining the required rights, replacing or removing the affected original material, or refunding the Licence Fee upon termination and permanent deletion of the Licensed Product.
+
+11. DISCLAIMERS
+
+11.1 EXCEPT FOR THE EXPRESS WARRANTY IN SECTION 10 AND ANY WARRANTY THAT CANNOT LAWFULLY BE EXCLUDED, THE LICENSED PRODUCT, DOCUMENTATION, SUPPORT, AND DELIVERABLES ARE PROVIDED “AS IS” AND “AS AVAILABLE”, WITH ALL FAULTS.
+
+11.2 LICENSOR DISCLAIMS ALL EXPRESS, IMPLIED, AND STATUTORY WARRANTIES, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT EXCEPT AS EXPRESSLY STATED IN SECTION 10, SECURITY, AVAILABILITY, ACCURACY, AND ERROR-FREE OPERATION.
+
+11.3 THE LICENSED PRODUCT IS NOT FINANCIAL, INVESTMENT, LEGAL, TAX, OR REGULATORY ADVICE. LICENSOR DOES NOT WARRANT OR REPRESENT ANY WIN RATE, PROFITABILITY, REAL-MONEY PERFORMANCE, RISK LEVEL, TRADING OUTCOME, REGULATORY STATUS, OR SUITABILITY. PAST, TEST, SIMULATED, OR BACKTEST RESULTS DO NOT GUARANTEE FUTURE RESULTS.
+
+11.4 LICENSOR DOES NOT WARRANT DERIV OR ANY OTHER THIRD-PARTY API, DATA, AUTHENTICATION METHOD, ENDPOINT, RATE LIMIT, CONTRACT, MARKET, OR SERVICE. LICENSEE ASSUMES ALL TRADING, DEPLOYMENT, SECURITY, DATA, PROVIDER, AND COMPLIANCE RISK.
+
+12. LIMITATION OF LIABILITY
+
+12.1 TO THE MAXIMUM EXTENT PERMITTED BY LAW, NEITHER PARTY IS LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, PUNITIVE, OR CONSEQUENTIAL DAMAGES, OR FOR LOST PROFITS, LOST REVENUE, LOST DATA, LOST BUSINESS, TRADING LOSSES, OR BUSINESS INTERRUPTION, ARISING FROM OR RELATED TO THIS AGREEMENT, EVEN IF ADVISED OF THE POSSIBILITY.
+
+12.2 TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR’S TOTAL AGGREGATE LIABILITY ARISING FROM OR RELATED TO THIS AGREEMENT WILL NOT EXCEED THE LICENCE FEE ACTUALLY RECEIVED BY LICENSOR.
+
+12.3 Nothing in this Agreement excludes or limits liability to the extent it cannot lawfully be excluded or limited, including liability for fraud or intentional misconduct. The cap does not limit Licensee’s payment obligations, breach of source-code restrictions, unauthorized sublicensing or transfer, or infringement of Licensor’s intellectual-property rights. The express ownership warranty remains subject to the remedy in Section 10.2 to the extent permitted by law.
+
+13. TERM AND TERMINATION
+
+13.1 This Agreement begins on the Effective Date and, subject to full payment, the licence is perpetual unless terminated under this Section.
+
+13.2 Either Party may terminate for a material breach not cured within thirty (30) days after detailed written notice. A breach involving unauthorized source disclosure, sublicensing, transfer, or deliberate infringement that is incapable of cure may be terminated immediately to the extent permitted by law.
+
+13.3 On termination for Licensee breach, Licensee must stop using the Licensed Product and permanently delete all copies, except one archival copy retained only if required by law and not used. Accrued payment, confidentiality, ownership, restrictions, disclaimers, liability, dispute, and other provisions intended by nature to survive will survive.
+
+14. DISPUTE RESOLUTION, GOVERNING LAW, AND LANGUAGE
+
+14.1 Before commencing court proceedings, the Parties will attempt in good faith for thirty (30) days after written dispute notice to resolve the dispute through authorized representatives. Either Party may seek urgent interim or injunctive relief without waiting where necessary to protect confidential information or intellectual-property rights.
+
+14.2 This Agreement is governed by the laws of Sri Lanka, without regard to conflict-of-law principles. Subject to Section 14.1, the courts located in Colombo, Sri Lanka have exclusive jurisdiction, and each Party submits to those courts.
+
+14.3 This Agreement is written in English. Any translation is for convenience only; the English version controls to the extent of inconsistency.
+
+15. GENERAL
+
+15.1 This Agreement, its schedules, the signed delivery manifest, and agreed escrow instructions constitute the entire agreement concerning the Licensed Product and supersede prior proposals or statements on that subject.
+
+15.2 An amendment, waiver, consent, or addition is effective only if in writing and signed by both Parties, except that operational support communications need not amend this Agreement.
+
+15.3 If a provision is held unenforceable, it will be limited or severed to the minimum extent necessary, and the remainder continues in effect.
+
+15.4 Failure to enforce a provision is not a waiver. Headings are for convenience. “Including” means “including without limitation”. Electronic signatures and counterparts are permitted to the extent recognized by applicable law, and together form one instrument.
+
+15.5 Notices must be sent to the physical and email addresses below, with delivery confirmation, and are effective as provided in the agreed notice method: [NOTICE METHOD AND DEEMED-RECEIPT TERMS].
+
+SCHEDULE 1 — LICENSED PRODUCT AND DELIVERY PACKAGE
+
+The Parties must complete this schedule before signing. An item is promised only if “Included” is checked and its path/version is identified.
+
+Delivery identifier:
+- Git commit: [DELIVERY COMMIT HASH]
+- Source archive SHA-256: [ARCHIVE SHA-256]
+- Delivery date: [DELIVERY DATE]
+- Secure delivery channel: [CHANNEL]
+
+Deliverables:
+
+[ ] Complete licensed Deriv-specific source-code snapshot: [PATH/VERSION]
+[ ] Rust project manifest and locked dependency graph (`Cargo.toml`, `Cargo.lock`)
+[ ] Simulator/backtester: [PATH/VERSION OR “NOT INCLUDED”]
+[ ] Integrated risk engine: [PATH/VERSION]
+[ ] Dashboard source: [PATH/VERSION OR “NOT INCLUDED”]
+[ ] API/database migrations: [PATH/VERSION OR “NOT APPLICABLE”]
+[ ] Automated tests and dated test report: [PATH]
+[ ] Docker/deployment files: [PATH/VERSION OR “NOT INCLUDED”]
+[ ] Secret-free `.env.example`
+[ ] Architecture documentation: [PATH]
+[ ] Installation/setup guide: [PATH]
+[ ] User/administrator guide: [PATH]
+[ ] Known-limitations and claims document: [PATH]
+[ ] Demo video: [URL/HASH OR “NOT INCLUDED”]
+[ ] Third-party dependency/SBOM and licence inventory: [PATH]
+[ ] Signed copy of this Agreement
+[ ] Thirty-day limited bug-fix support under Section 8
+
+Acceptance environment and commands:
+- Supported OS/architecture: [DETAILS]
+- Rust toolchain: [VERSION]
+- Acceptance commands: [COMMANDS]
+- Expected results: [RESULTS]
+
+SCHEDULE 2 — EXCLUDED ASSETS
+
+The following are excluded even if present in a development environment:
+
+1. Licensor’s Deriv account, App ID, OAuth registration, PAT/access token, OTP, API credentials, account data, balances, bank/payment information, and rate-limit allocation.
+2. Real-money results, representations, warranties, and profit guarantees.
+3. Future features, updates, maintenance, and support beyond Section 8.
+4. Hosting, infrastructure, escrow, banking, transfer, and currency-conversion services or costs.
+5. Third-party paid licences and all Third-Party Materials except the limited rights their own licences independently provide.
+6. Historical datasets, CSV files, raw WebSocket recordings, API-derived records, logs, caches, and backups unless separately listed in a signed data schedule with transfer rights.
+7. Ownership of Reserved Technology and generic reusable libraries.
+8. Any deliverable not checked and identified in Schedule 1.
+
+SIGNATURES
+
+LICENSOR
+
+Name: PANAMULLA ARACHCHIGE SADARES DENUWAN
+Government ID/passport number (optional; handle securely): [ID NUMBER]
+Address: [LICENSOR ADDRESS]
+Email: [LICENSOR EMAIL]
+Signature: ______________________________
+Date: __________________________________
+
+LICENSEE
+
+Legal name: [BUYER FULL LEGAL NAME]
+Registration/ID number: [BUYER REGISTRATION OR ID NUMBER]
+Authorized signatory and title (if applicable): [NAME AND TITLE]
+Address: [BUYER ADDRESS]
+Email: [BUYER EMAIL]
+Signature: ______________________________
+Date: __________________________________
