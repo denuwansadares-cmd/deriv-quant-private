@@ -97,21 +97,66 @@ fn latch_stop(reason: &str) -> std::io::Result<()> {
             .as_bytes(),
     )
 }
+
+fn heartbeat_fresh(stale_secs: u64) -> bool {
+    fs::metadata(dir().join(HEARTBEAT_NAME))
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_some_and(|age| age < Duration::from_secs(stale_secs))
+}
+fn health_check(stale_secs: u64) -> std::io::Result<()> {
+    let identity =
+        read_identity().ok_or_else(|| std::io::Error::other("runtime identity unavailable"))?;
+    if !identity_is_active(&identity) {
+        return Err(std::io::Error::other("runtime identity is not active"));
+    }
+    if !heartbeat_fresh(stale_secs) {
+        return Err(std::io::Error::other("runtime heartbeat is stale"));
+    }
+    if dir().join(STOP_NAME).exists() {
+        return Err(std::io::Error::other("persistent stop is engaged"));
+    }
+    Ok(())
+}
+
 fn main() -> std::io::Result<()> {
     let stale_secs = std::env::var("DERIV_WATCHDOG_STALE_SECS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(10)
         .max(2);
+    if std::env::args().nth(1).as_deref() == Some("--check") {
+        return health_check(stale_secs);
+    }
+    let startup_grace_secs = std::env::var("DERIV_WATCHDOG_STARTUP_GRACE_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(30)
+        .max(stale_secs);
     fs::create_dir_all(dir())?;
+    let startup_deadline = std::time::Instant::now() + Duration::from_secs(startup_grace_secs);
+    while std::time::Instant::now() < startup_deadline {
+        if read_identity().is_some_and(|identity| identity_is_active(&identity))
+            && heartbeat_fresh(stale_secs)
+        {
+            break;
+        }
+        if dir().join(STOP_NAME).exists() {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+    if !read_identity().is_some_and(|identity| identity_is_active(&identity))
+        || !heartbeat_fresh(stale_secs)
+    {
+        latch_stop("watchdog: runtime failed startup health gate")?;
+        return Err(std::io::Error::other(
+            "runtime failed watchdog startup health gate",
+        ));
+    }
     loop {
-        let heartbeat = dir().join(HEARTBEAT_NAME);
-        let stale = fs::metadata(&heartbeat)
-            .and_then(|metadata| metadata.modified())
-            .ok()
-            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
-            .is_none_or(|age| age >= Duration::from_secs(stale_secs));
-        if stale {
+        if !heartbeat_fresh(stale_secs) {
             let reason = format!("watchdog: runtime heartbeat stale for {stale_secs}s");
             latch_stop(&reason)?;
             if let Some(identity) = read_identity() {

@@ -1,22 +1,124 @@
 services:
-  dashboard:
+  bot:
     build: .
+    image: deriv-platform:72h-preflight
+    command: ["deriv_bot", "--mode", "demo", "--history", "/history/normalized"]
+    env_file:
+      - .env
+    environment:
+      DERIV_MODE: demo
+      HISTORY_PATH: /history/normalized
+      DERIV_RISK_STATE_DIR: /var/lib/deriv-risk
+      DERIV_AUDIT_JOURNAL_DIR: /var/lib/deriv-audit
+      DERIV_API_RECORDS_DIR: /tmp/api-records
+      DEMO_DURATION_SECS: "259200"
+      DERIV_MAX_STAKE_MINOR: "100"
+      DERIV_SESSION_LOSS_LIMIT_BPS: "100"
+      DERIV_MAX_OPEN_EXPOSURE_BPS: "100"
+      DERIV_MAX_OPEN_CONTRACTS: "1"
+      RUST_LOG: info
+    volumes:
+      - type: bind
+        source: /home/sunandajayalathq/deriv_tick_downloader/data
+        target: /history/raw
+        read_only: true
+      - type: bind
+        source: /home/sunandajayalathq/deriv_bot/history-normalized
+        target: /history/normalized
+        read_only: true
+      - deriv-risk:/var/lib/deriv-risk
+      - deriv-audit:/var/lib/deriv-audit
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    pids_limit: 128
+    mem_limit: 768m
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "10"
+    healthcheck:
+      test: ["CMD", "deriv_watchdog", "--check"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  watchdog:
+    image: deriv-platform:72h-preflight
+    command: ["deriv_watchdog"]
+    environment:
+      DERIV_RISK_STATE_DIR: /var/lib/deriv-risk
+      DERIV_WATCHDOG_STALE_SECS: "15"
+      DERIV_WATCHDOG_STARTUP_GRACE_SECS: "30"
+    volumes:
+      - deriv-risk:/var/lib/deriv-risk
+    pid: "service:bot"
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    cap_drop: [ALL]
+    cap_add: [KILL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+    depends_on:
+      bot:
+        condition: service_started
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 0.25
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "deriv_watchdog", "--check"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  dashboard:
+    image: deriv-platform:72h-preflight
+    command: ["deriv_platform"]
     environment:
       DERIV_RISK_STATE_DIR: /var/lib/deriv-risk
       DERIV_DASHBOARD_BIND: 0.0.0.0:8080
       DERIV_DASHBOARD_TOKEN: ${DERIV_DASHBOARD_TOKEN:?set a random 32+ character token}
-      DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX: ${DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX:?set an expiry timestamp}
+      DERIV_DASHBOARD_CSRF_TOKEN: ${DERIV_DASHBOARD_CSRF_TOKEN:?set a separate random 32+ character CSRF token}
+      DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX: ${DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX:?set an expiry beyond the scheduled run end}
+      DERIV_DASHBOARD_AUDIT_RETENTION_SECS: "604800"
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
       - deriv-risk:/var/lib/deriv-risk
     read_only: true
     tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     restart: unless-stopped
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: 0.50
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/api/v1/status"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
 volumes:
   deriv-risk:
+  deriv-audit:
