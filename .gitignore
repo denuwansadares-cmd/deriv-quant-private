@@ -24,6 +24,10 @@ data/provenance/private/
 data/history/
 *.csv
 
+# Python/tool caches
+__pycache__/
+*.pyc
+
 # Editor and operating-system files
 .DS_Store
 .idea/

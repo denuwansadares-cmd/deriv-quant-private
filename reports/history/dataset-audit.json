@@ -1,0 +1,1779 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-03T16:18:44.642915+00:00",
+  "raw_directory": "/home/sunandajayalathq/deriv_tick_downloader/data",
+  "normalized_directory": "history-normalized",
+  "raw_files_modified": false,
+  "files": [
+    {
+      "symbol": "1HZ100V",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/1HZ100V.csv",
+      "normalized_path": "history-normalized/1HZ100V.csv",
+      "raw_sha256": "852330697232b9d638a476bfa8ab9a487ac828f8a281f915d7a09fa1f0065188",
+      "normalized_sha256": "84e83a8ea833ff488f1b5ebe491ccf9cf27fc535ff456ede5c65505c1f7599f7",
+      "raw_size_bytes": 19101723,
+      "normalized_size_bytes": 19101723,
+      "rows_total": 500000,
+      "rows_valid_finite": 500000,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500000
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-26T03:46:18.370084+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499900,
+      "descending_transitions": 99,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 5001,
+          "previous_epoch": 1785037153,
+          "epoch": 1784945754,
+          "delta": -91399
+        },
+        {
+          "line": 10001,
+          "previous_epoch": 1784950753,
+          "epoch": 1784859354,
+          "delta": -91399
+        },
+        {
+          "line": 15001,
+          "previous_epoch": 1784864353,
+          "epoch": 1784772954,
+          "delta": -91399
+        },
+        {
+          "line": 20001,
+          "previous_epoch": 1784777953,
+          "epoch": 1784686554,
+          "delta": -91399
+        },
+        {
+          "line": 25001,
+          "previous_epoch": 1784691553,
+          "epoch": 1784600154,
+          "delta": -91399
+        },
+        {
+          "line": 30001,
+          "previous_epoch": 1784605153,
+          "epoch": 1784513754,
+          "delta": -91399
+        },
+        {
+          "line": 35001,
+          "previous_epoch": 1784518753,
+          "epoch": 1784427354,
+          "delta": -91399
+        },
+        {
+          "line": 40001,
+          "previous_epoch": 1784432353,
+          "epoch": 1784340954,
+          "delta": -91399
+        },
+        {
+          "line": 45001,
+          "previous_epoch": 1784345953,
+          "epoch": 1784254554,
+          "delta": -91399
+        },
+        {
+          "line": 50001,
+          "previous_epoch": 1784259553,
+          "epoch": 1784168154,
+          "delta": -91399
+        },
+        {
+          "line": 55001,
+          "previous_epoch": 1784173153,
+          "epoch": 1784081754,
+          "delta": -91399
+        },
+        {
+          "line": 60001,
+          "previous_epoch": 1784086753,
+          "epoch": 1783995354,
+          "delta": -91399
+        },
+        {
+          "line": 65001,
+          "previous_epoch": 1784000353,
+          "epoch": 1783908954,
+          "delta": -91399
+        },
+        {
+          "line": 70001,
+          "previous_epoch": 1783913953,
+          "epoch": 1783822554,
+          "delta": -91399
+        },
+        {
+          "line": 75001,
+          "previous_epoch": 1783827553,
+          "epoch": 1783736154,
+          "delta": -91399
+        },
+        {
+          "line": 80001,
+          "previous_epoch": 1783741153,
+          "epoch": 1783649754,
+          "delta": -91399
+        },
+        {
+          "line": 85001,
+          "previous_epoch": 1783654753,
+          "epoch": 1783563354,
+          "delta": -91399
+        },
+        {
+          "line": 90001,
+          "previous_epoch": 1783568353,
+          "epoch": 1783476954,
+          "delta": -91399
+        },
+        {
+          "line": 95001,
+          "previous_epoch": 1783481953,
+          "epoch": 1783390554,
+          "delta": -91399
+        },
+        {
+          "line": 100001,
+          "previous_epoch": 1783395553,
+          "epoch": 1783304154,
+          "delta": -91399
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 1,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 8058600,
+      "largest_normalized_gap_seconds": 81401,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2026-07-26 02:15:54",
+        "epoch": 1785032154
+      },
+      "raw_last_valid": {
+        "line": 500000,
+        "utc": "2026-04-18 03:39:13",
+        "epoch": 1776483553
+      },
+      "normalized_start_utc": "2026-04-18 02:15:54",
+      "normalized_start_epoch": 1776478554,
+      "normalized_end_utc": "2026-07-26 03:39:13",
+      "normalized_end_epoch": 1785037153
+    },
+    {
+      "symbol": "1HZ10V",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/1HZ10V.csv",
+      "normalized_path": "history-normalized/1HZ10V.csv",
+      "raw_sha256": "f96191e283c39e090d3ab69d67fdaa25d63337723ff13dd41ae3311efa926e45",
+      "normalized_sha256": "106651d49e55f00c8eb168201070ae98ba0bed5d068259d830c0db8487fecbb8",
+      "raw_size_bytes": 19665252,
+      "normalized_size_bytes": 19665252,
+      "rows_total": 500000,
+      "rows_valid_finite": 500000,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500000
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-26T03:15:25.144140+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499900,
+      "descending_transitions": 99,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 5001,
+          "previous_epoch": 1785035200,
+          "epoch": 1784943801,
+          "delta": -91399
+        },
+        {
+          "line": 10001,
+          "previous_epoch": 1784948800,
+          "epoch": 1784857401,
+          "delta": -91399
+        },
+        {
+          "line": 15001,
+          "previous_epoch": 1784862400,
+          "epoch": 1784771001,
+          "delta": -91399
+        },
+        {
+          "line": 20001,
+          "previous_epoch": 1784776000,
+          "epoch": 1784684601,
+          "delta": -91399
+        },
+        {
+          "line": 25001,
+          "previous_epoch": 1784689600,
+          "epoch": 1784598201,
+          "delta": -91399
+        },
+        {
+          "line": 30001,
+          "previous_epoch": 1784603200,
+          "epoch": 1784511801,
+          "delta": -91399
+        },
+        {
+          "line": 35001,
+          "previous_epoch": 1784516800,
+          "epoch": 1784425401,
+          "delta": -91399
+        },
+        {
+          "line": 40001,
+          "previous_epoch": 1784430400,
+          "epoch": 1784339001,
+          "delta": -91399
+        },
+        {
+          "line": 45001,
+          "previous_epoch": 1784344000,
+          "epoch": 1784252601,
+          "delta": -91399
+        },
+        {
+          "line": 50001,
+          "previous_epoch": 1784257600,
+          "epoch": 1784166201,
+          "delta": -91399
+        },
+        {
+          "line": 55001,
+          "previous_epoch": 1784171200,
+          "epoch": 1784079801,
+          "delta": -91399
+        },
+        {
+          "line": 60001,
+          "previous_epoch": 1784084800,
+          "epoch": 1783993401,
+          "delta": -91399
+        },
+        {
+          "line": 65001,
+          "previous_epoch": 1783998400,
+          "epoch": 1783907001,
+          "delta": -91399
+        },
+        {
+          "line": 70001,
+          "previous_epoch": 1783912000,
+          "epoch": 1783820601,
+          "delta": -91399
+        },
+        {
+          "line": 75001,
+          "previous_epoch": 1783825600,
+          "epoch": 1783734201,
+          "delta": -91399
+        },
+        {
+          "line": 80001,
+          "previous_epoch": 1783739200,
+          "epoch": 1783647801,
+          "delta": -91399
+        },
+        {
+          "line": 85001,
+          "previous_epoch": 1783652800,
+          "epoch": 1783561401,
+          "delta": -91399
+        },
+        {
+          "line": 90001,
+          "previous_epoch": 1783566400,
+          "epoch": 1783475001,
+          "delta": -91399
+        },
+        {
+          "line": 95001,
+          "previous_epoch": 1783480000,
+          "epoch": 1783388601,
+          "delta": -91399
+        },
+        {
+          "line": 100001,
+          "previous_epoch": 1783393600,
+          "epoch": 1783302201,
+          "delta": -91399
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 1,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 8058600,
+      "largest_normalized_gap_seconds": 81401,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2026-07-26 01:43:21",
+        "epoch": 1785030201
+      },
+      "raw_last_valid": {
+        "line": 500000,
+        "utc": "2026-04-18 03:06:40",
+        "epoch": 1776481600
+      },
+      "normalized_start_utc": "2026-04-18 01:43:21",
+      "normalized_start_epoch": 1776476601,
+      "normalized_end_utc": "2026-07-26 03:06:40",
+      "normalized_end_epoch": 1785035200
+    },
+    {
+      "symbol": "1HZ25V",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/1HZ25V.csv",
+      "normalized_path": "history-normalized/1HZ25V.csv",
+      "raw_sha256": "77010cd08e11dda06d89c038c1a3a90b0d7380cc1226a1e0bb9e5baa1aa28520",
+      "normalized_sha256": "10078493d69c68b78df32d74875d41a51e7823fe33b8038d12df7213fcef9838",
+      "raw_size_bytes": 20439971,
+      "normalized_size_bytes": 20439971,
+      "rows_total": 500000,
+      "rows_valid_finite": 500000,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500000
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-26T03:23:33.864122+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499900,
+      "descending_transitions": 99,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 5001,
+          "previous_epoch": 1785035726,
+          "epoch": 1784944327,
+          "delta": -91399
+        },
+        {
+          "line": 10001,
+          "previous_epoch": 1784949326,
+          "epoch": 1784857927,
+          "delta": -91399
+        },
+        {
+          "line": 15001,
+          "previous_epoch": 1784862926,
+          "epoch": 1784771527,
+          "delta": -91399
+        },
+        {
+          "line": 20001,
+          "previous_epoch": 1784776526,
+          "epoch": 1784685127,
+          "delta": -91399
+        },
+        {
+          "line": 25001,
+          "previous_epoch": 1784690126,
+          "epoch": 1784598727,
+          "delta": -91399
+        },
+        {
+          "line": 30001,
+          "previous_epoch": 1784603726,
+          "epoch": 1784512327,
+          "delta": -91399
+        },
+        {
+          "line": 35001,
+          "previous_epoch": 1784517326,
+          "epoch": 1784425927,
+          "delta": -91399
+        },
+        {
+          "line": 40001,
+          "previous_epoch": 1784430926,
+          "epoch": 1784339527,
+          "delta": -91399
+        },
+        {
+          "line": 45001,
+          "previous_epoch": 1784344526,
+          "epoch": 1784253127,
+          "delta": -91399
+        },
+        {
+          "line": 50001,
+          "previous_epoch": 1784258126,
+          "epoch": 1784166727,
+          "delta": -91399
+        },
+        {
+          "line": 55001,
+          "previous_epoch": 1784171726,
+          "epoch": 1784080327,
+          "delta": -91399
+        },
+        {
+          "line": 60001,
+          "previous_epoch": 1784085326,
+          "epoch": 1783993927,
+          "delta": -91399
+        },
+        {
+          "line": 65001,
+          "previous_epoch": 1783998926,
+          "epoch": 1783907527,
+          "delta": -91399
+        },
+        {
+          "line": 70001,
+          "previous_epoch": 1783912526,
+          "epoch": 1783821127,
+          "delta": -91399
+        },
+        {
+          "line": 75001,
+          "previous_epoch": 1783826126,
+          "epoch": 1783734727,
+          "delta": -91399
+        },
+        {
+          "line": 80001,
+          "previous_epoch": 1783739726,
+          "epoch": 1783648327,
+          "delta": -91399
+        },
+        {
+          "line": 85001,
+          "previous_epoch": 1783653326,
+          "epoch": 1783561927,
+          "delta": -91399
+        },
+        {
+          "line": 90001,
+          "previous_epoch": 1783566926,
+          "epoch": 1783475527,
+          "delta": -91399
+        },
+        {
+          "line": 95001,
+          "previous_epoch": 1783480526,
+          "epoch": 1783389127,
+          "delta": -91399
+        },
+        {
+          "line": 100001,
+          "previous_epoch": 1783394126,
+          "epoch": 1783302727,
+          "delta": -91399
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 1,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 8058600,
+      "largest_normalized_gap_seconds": 81401,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2026-07-26 01:52:07",
+        "epoch": 1785030727
+      },
+      "raw_last_valid": {
+        "line": 500000,
+        "utc": "2026-04-18 03:15:26",
+        "epoch": 1776482126
+      },
+      "normalized_start_utc": "2026-04-18 01:52:07",
+      "normalized_start_epoch": 1776477127,
+      "normalized_end_utc": "2026-07-26 03:15:26",
+      "normalized_end_epoch": 1785035726
+    },
+    {
+      "symbol": "1HZ50V",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/1HZ50V.csv",
+      "normalized_path": "history-normalized/1HZ50V.csv",
+      "raw_sha256": "8ca497ecf6b730fe6188902872d44416d0288ba15261c3914dc76361eb149520",
+      "normalized_sha256": "1ad7d2fc906c5023eb8e9cb191562f3d61c92d6506da880d71504c5546483d46",
+      "raw_size_bytes": 20440413,
+      "normalized_size_bytes": 20440413,
+      "rows_total": 500000,
+      "rows_valid_finite": 500000,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500000
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-26T03:31:35.276107+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499900,
+      "descending_transitions": 99,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 5001,
+          "previous_epoch": 1785036214,
+          "epoch": 1784944815,
+          "delta": -91399
+        },
+        {
+          "line": 10001,
+          "previous_epoch": 1784949814,
+          "epoch": 1784858415,
+          "delta": -91399
+        },
+        {
+          "line": 15001,
+          "previous_epoch": 1784863414,
+          "epoch": 1784772015,
+          "delta": -91399
+        },
+        {
+          "line": 20001,
+          "previous_epoch": 1784777014,
+          "epoch": 1784685615,
+          "delta": -91399
+        },
+        {
+          "line": 25001,
+          "previous_epoch": 1784690614,
+          "epoch": 1784599215,
+          "delta": -91399
+        },
+        {
+          "line": 30001,
+          "previous_epoch": 1784604214,
+          "epoch": 1784512815,
+          "delta": -91399
+        },
+        {
+          "line": 35001,
+          "previous_epoch": 1784517814,
+          "epoch": 1784426415,
+          "delta": -91399
+        },
+        {
+          "line": 40001,
+          "previous_epoch": 1784431414,
+          "epoch": 1784340015,
+          "delta": -91399
+        },
+        {
+          "line": 45001,
+          "previous_epoch": 1784345014,
+          "epoch": 1784253615,
+          "delta": -91399
+        },
+        {
+          "line": 50001,
+          "previous_epoch": 1784258614,
+          "epoch": 1784167215,
+          "delta": -91399
+        },
+        {
+          "line": 55001,
+          "previous_epoch": 1784172214,
+          "epoch": 1784080815,
+          "delta": -91399
+        },
+        {
+          "line": 60001,
+          "previous_epoch": 1784085814,
+          "epoch": 1783994415,
+          "delta": -91399
+        },
+        {
+          "line": 65001,
+          "previous_epoch": 1783999414,
+          "epoch": 1783908015,
+          "delta": -91399
+        },
+        {
+          "line": 70001,
+          "previous_epoch": 1783913014,
+          "epoch": 1783821615,
+          "delta": -91399
+        },
+        {
+          "line": 75001,
+          "previous_epoch": 1783826614,
+          "epoch": 1783735215,
+          "delta": -91399
+        },
+        {
+          "line": 80001,
+          "previous_epoch": 1783740214,
+          "epoch": 1783648815,
+          "delta": -91399
+        },
+        {
+          "line": 85001,
+          "previous_epoch": 1783653814,
+          "epoch": 1783562415,
+          "delta": -91399
+        },
+        {
+          "line": 90001,
+          "previous_epoch": 1783567414,
+          "epoch": 1783476015,
+          "delta": -91399
+        },
+        {
+          "line": 95001,
+          "previous_epoch": 1783481014,
+          "epoch": 1783389615,
+          "delta": -91399
+        },
+        {
+          "line": 100001,
+          "previous_epoch": 1783394614,
+          "epoch": 1783303215,
+          "delta": -91399
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 1,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 8058600,
+      "largest_normalized_gap_seconds": 81401,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2026-07-26 02:00:15",
+        "epoch": 1785031215
+      },
+      "raw_last_valid": {
+        "line": 500000,
+        "utc": "2026-04-18 03:23:34",
+        "epoch": 1776482614
+      },
+      "normalized_start_utc": "2026-04-18 02:00:15",
+      "normalized_start_epoch": 1776477615,
+      "normalized_end_utc": "2026-07-26 03:23:34",
+      "normalized_end_epoch": 1785036214
+    },
+    {
+      "symbol": "1HZ75V",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/1HZ75V.csv",
+      "normalized_path": "history-normalized/1HZ75V.csv",
+      "raw_sha256": "e2210459787a523d5048666d60435e158a49104fa41e566cbf43348f10c29c0c",
+      "normalized_sha256": "36ae0da185ae8df07edb613afe505c0eb96329b84d40cb06b3f54442a0e9ffd7",
+      "raw_size_bytes": 19439823,
+      "normalized_size_bytes": 19439823,
+      "rows_total": 500000,
+      "rows_valid_finite": 500000,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500000
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-26T03:39:12.659095+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499900,
+      "descending_transitions": 99,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 5001,
+          "previous_epoch": 1785036696,
+          "epoch": 1784945297,
+          "delta": -91399
+        },
+        {
+          "line": 10001,
+          "previous_epoch": 1784950296,
+          "epoch": 1784858897,
+          "delta": -91399
+        },
+        {
+          "line": 15001,
+          "previous_epoch": 1784863896,
+          "epoch": 1784772497,
+          "delta": -91399
+        },
+        {
+          "line": 20001,
+          "previous_epoch": 1784777496,
+          "epoch": 1784686097,
+          "delta": -91399
+        },
+        {
+          "line": 25001,
+          "previous_epoch": 1784691096,
+          "epoch": 1784599697,
+          "delta": -91399
+        },
+        {
+          "line": 30001,
+          "previous_epoch": 1784604696,
+          "epoch": 1784513297,
+          "delta": -91399
+        },
+        {
+          "line": 35001,
+          "previous_epoch": 1784518296,
+          "epoch": 1784426897,
+          "delta": -91399
+        },
+        {
+          "line": 40001,
+          "previous_epoch": 1784431896,
+          "epoch": 1784340497,
+          "delta": -91399
+        },
+        {
+          "line": 45001,
+          "previous_epoch": 1784345496,
+          "epoch": 1784254097,
+          "delta": -91399
+        },
+        {
+          "line": 50001,
+          "previous_epoch": 1784259096,
+          "epoch": 1784167697,
+          "delta": -91399
+        },
+        {
+          "line": 55001,
+          "previous_epoch": 1784172696,
+          "epoch": 1784081297,
+          "delta": -91399
+        },
+        {
+          "line": 60001,
+          "previous_epoch": 1784086296,
+          "epoch": 1783994897,
+          "delta": -91399
+        },
+        {
+          "line": 65001,
+          "previous_epoch": 1783999896,
+          "epoch": 1783908497,
+          "delta": -91399
+        },
+        {
+          "line": 70001,
+          "previous_epoch": 1783913496,
+          "epoch": 1783822097,
+          "delta": -91399
+        },
+        {
+          "line": 75001,
+          "previous_epoch": 1783827096,
+          "epoch": 1783735697,
+          "delta": -91399
+        },
+        {
+          "line": 80001,
+          "previous_epoch": 1783740696,
+          "epoch": 1783649297,
+          "delta": -91399
+        },
+        {
+          "line": 85001,
+          "previous_epoch": 1783654296,
+          "epoch": 1783562897,
+          "delta": -91399
+        },
+        {
+          "line": 90001,
+          "previous_epoch": 1783567896,
+          "epoch": 1783476497,
+          "delta": -91399
+        },
+        {
+          "line": 95001,
+          "previous_epoch": 1783481496,
+          "epoch": 1783390097,
+          "delta": -91399
+        },
+        {
+          "line": 100001,
+          "previous_epoch": 1783395096,
+          "epoch": 1783303697,
+          "delta": -91399
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 1,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 8058600,
+      "largest_normalized_gap_seconds": 81401,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2026-07-26 02:08:17",
+        "epoch": 1785031697
+      },
+      "raw_last_valid": {
+        "line": 500000,
+        "utc": "2026-04-18 03:31:36",
+        "epoch": 1776483096
+      },
+      "normalized_start_utc": "2026-04-18 02:08:17",
+      "normalized_start_epoch": 1776478097,
+      "normalized_end_utc": "2026-07-26 03:31:36",
+      "normalized_end_epoch": 1785036696
+    },
+    {
+      "symbol": "R_10",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/R_10.csv",
+      "normalized_path": "history-normalized/R_10.csv",
+      "raw_sha256": "4f55af50775c8660dc03beab9648f889f89d80b33a9e58799415bb60616ab6a5",
+      "normalized_sha256": "346367ed2a878d2897fb2c617b95cf287f40e916d76cd9838830b014484d1cf9",
+      "raw_size_bytes": 19944446,
+      "normalized_size_bytes": 19944446,
+      "rows_total": 500017,
+      "rows_valid_finite": 500017,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500017
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-27T23:04:43.738688+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499901,
+      "descending_transitions": 115,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 5001,
+          "previous_epoch": 1753487998,
+          "epoch": 1753477998,
+          "delta": -10000
+        },
+        {
+          "line": 5002,
+          "previous_epoch": 1753477998,
+          "epoch": 1753477996,
+          "delta": -2
+        },
+        {
+          "line": 5003,
+          "previous_epoch": 1753477996,
+          "epoch": 1753477994,
+          "delta": -2
+        },
+        {
+          "line": 5004,
+          "previous_epoch": 1753477994,
+          "epoch": 1753477992,
+          "delta": -2
+        },
+        {
+          "line": 5005,
+          "previous_epoch": 1753477992,
+          "epoch": 1753477990,
+          "delta": -2
+        },
+        {
+          "line": 5006,
+          "previous_epoch": 1753477990,
+          "epoch": 1753477988,
+          "delta": -2
+        },
+        {
+          "line": 5007,
+          "previous_epoch": 1753477988,
+          "epoch": 1753477986,
+          "delta": -2
+        },
+        {
+          "line": 5008,
+          "previous_epoch": 1753477986,
+          "epoch": 1753477984,
+          "delta": -2
+        },
+        {
+          "line": 5009,
+          "previous_epoch": 1753477984,
+          "epoch": 1753477982,
+          "delta": -2
+        },
+        {
+          "line": 5010,
+          "previous_epoch": 1753477982,
+          "epoch": 1753477980,
+          "delta": -2
+        },
+        {
+          "line": 5011,
+          "previous_epoch": 1753477980,
+          "epoch": 1753477978,
+          "delta": -2
+        },
+        {
+          "line": 5012,
+          "previous_epoch": 1753477978,
+          "epoch": 1753477976,
+          "delta": -2
+        },
+        {
+          "line": 5013,
+          "previous_epoch": 1753477976,
+          "epoch": 1753477974,
+          "delta": -2
+        },
+        {
+          "line": 5014,
+          "previous_epoch": 1753477974,
+          "epoch": 1753477972,
+          "delta": -2
+        },
+        {
+          "line": 5015,
+          "previous_epoch": 1753477972,
+          "epoch": 1753477970,
+          "delta": -2
+        },
+        {
+          "line": 5016,
+          "previous_epoch": 1753477970,
+          "epoch": 1753477968,
+          "delta": -2
+        },
+        {
+          "line": 5017,
+          "previous_epoch": 1753477968,
+          "epoch": 1753477966,
+          "delta": -2
+        },
+        {
+          "line": 10018,
+          "previous_epoch": 1784989760,
+          "epoch": 1784893362,
+          "delta": -96398
+        },
+        {
+          "line": 15018,
+          "previous_epoch": 1784903360,
+          "epoch": 1784806962,
+          "delta": -96398
+        },
+        {
+          "line": 20018,
+          "previous_epoch": 1784816960,
+          "epoch": 1784720562,
+          "delta": -96398
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 2,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 15255881,
+      "largest_normalized_gap_seconds": 23024564,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2025-07-25 21:13:20",
+        "epoch": 1753478000
+      },
+      "raw_last_valid": {
+        "line": 500017,
+        "utc": "2026-04-18 14:29:20",
+        "epoch": 1776522560
+      },
+      "normalized_start_utc": "2025-07-25 21:12:46",
+      "normalized_start_epoch": 1753477966,
+      "normalized_end_utc": "2026-07-25 14:29:20",
+      "normalized_end_epoch": 1784989760
+    },
+    {
+      "symbol": "R_25",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/R_25.csv",
+      "normalized_path": "history-normalized/R_25.csv",
+      "raw_sha256": "58113e1ebd86ee89e8beb1711a314f507e77ad2fafd5d929cf548a56944c3701",
+      "normalized_sha256": "964d219ff912ca62824a7c77ca8f2b1a5fedb26a7335971370dfe79202917d07",
+      "raw_size_bytes": 19943829,
+      "normalized_size_bytes": 19943829,
+      "rows_total": 500000,
+      "rows_valid_finite": 500000,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500000
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-25T14:45:28.987328+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499901,
+      "descending_transitions": 98,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 10001,
+          "previous_epoch": 1784990264,
+          "epoch": 1784893866,
+          "delta": -96398
+        },
+        {
+          "line": 15001,
+          "previous_epoch": 1784903864,
+          "epoch": 1784807466,
+          "delta": -96398
+        },
+        {
+          "line": 20001,
+          "previous_epoch": 1784817464,
+          "epoch": 1784721066,
+          "delta": -96398
+        },
+        {
+          "line": 25001,
+          "previous_epoch": 1784731064,
+          "epoch": 1784634666,
+          "delta": -96398
+        },
+        {
+          "line": 30001,
+          "previous_epoch": 1784644664,
+          "epoch": 1784548266,
+          "delta": -96398
+        },
+        {
+          "line": 35001,
+          "previous_epoch": 1784558264,
+          "epoch": 1784461866,
+          "delta": -96398
+        },
+        {
+          "line": 40001,
+          "previous_epoch": 1784471864,
+          "epoch": 1784375466,
+          "delta": -96398
+        },
+        {
+          "line": 45001,
+          "previous_epoch": 1784385464,
+          "epoch": 1784289066,
+          "delta": -96398
+        },
+        {
+          "line": 50001,
+          "previous_epoch": 1784299064,
+          "epoch": 1784202666,
+          "delta": -96398
+        },
+        {
+          "line": 55001,
+          "previous_epoch": 1784212664,
+          "epoch": 1784116266,
+          "delta": -96398
+        },
+        {
+          "line": 60001,
+          "previous_epoch": 1784126264,
+          "epoch": 1784029866,
+          "delta": -96398
+        },
+        {
+          "line": 65001,
+          "previous_epoch": 1784039864,
+          "epoch": 1783943466,
+          "delta": -96398
+        },
+        {
+          "line": 70001,
+          "previous_epoch": 1783953464,
+          "epoch": 1783857066,
+          "delta": -96398
+        },
+        {
+          "line": 75001,
+          "previous_epoch": 1783867064,
+          "epoch": 1783770666,
+          "delta": -96398
+        },
+        {
+          "line": 80001,
+          "previous_epoch": 1783780664,
+          "epoch": 1783684266,
+          "delta": -96398
+        },
+        {
+          "line": 85001,
+          "previous_epoch": 1783694264,
+          "epoch": 1783597866,
+          "delta": -96398
+        },
+        {
+          "line": 90001,
+          "previous_epoch": 1783607864,
+          "epoch": 1783511466,
+          "delta": -96398
+        },
+        {
+          "line": 95001,
+          "previous_epoch": 1783521464,
+          "epoch": 1783425066,
+          "delta": -96398
+        },
+        {
+          "line": 100001,
+          "previous_epoch": 1783435064,
+          "epoch": 1783338666,
+          "delta": -96398
+        },
+        {
+          "line": 105001,
+          "previous_epoch": 1783348664,
+          "epoch": 1783252266,
+          "delta": -96398
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 2,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 15256133,
+      "largest_normalized_gap_seconds": 23025068,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2025-07-25 21:13:20",
+        "epoch": 1753478000
+      },
+      "raw_last_valid": {
+        "line": 500000,
+        "utc": "2026-04-18 14:37:44",
+        "epoch": 1776523064
+      },
+      "normalized_start_utc": "2025-07-25 21:13:20",
+      "normalized_start_epoch": 1753478000,
+      "normalized_end_utc": "2026-07-25 14:37:44",
+      "normalized_end_epoch": 1784990264
+    },
+    {
+      "symbol": "R_50",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/R_50.csv",
+      "normalized_path": "history-normalized/R_50.csv",
+      "raw_sha256": "2a342f3c1c3b953312586d0a3113810843fe8581da1d6be65ad0a6c07c398aaa",
+      "normalized_sha256": "4999f922541d21d0116ee9ac4adaf3ed18911ecab71e784f121f84d5f86f88f9",
+      "raw_size_bytes": 19449130,
+      "normalized_size_bytes": 19449130,
+      "rows_total": 500000,
+      "rows_valid_finite": 500000,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500000
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-25T14:52:27.564052+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499901,
+      "descending_transitions": 98,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 10001,
+          "previous_epoch": 1784990732,
+          "epoch": 1784894334,
+          "delta": -96398
+        },
+        {
+          "line": 15001,
+          "previous_epoch": 1784904332,
+          "epoch": 1784807934,
+          "delta": -96398
+        },
+        {
+          "line": 20001,
+          "previous_epoch": 1784817932,
+          "epoch": 1784721534,
+          "delta": -96398
+        },
+        {
+          "line": 25001,
+          "previous_epoch": 1784731532,
+          "epoch": 1784635134,
+          "delta": -96398
+        },
+        {
+          "line": 30001,
+          "previous_epoch": 1784645132,
+          "epoch": 1784548734,
+          "delta": -96398
+        },
+        {
+          "line": 35001,
+          "previous_epoch": 1784558732,
+          "epoch": 1784462334,
+          "delta": -96398
+        },
+        {
+          "line": 40001,
+          "previous_epoch": 1784472332,
+          "epoch": 1784375934,
+          "delta": -96398
+        },
+        {
+          "line": 45001,
+          "previous_epoch": 1784385932,
+          "epoch": 1784289534,
+          "delta": -96398
+        },
+        {
+          "line": 50001,
+          "previous_epoch": 1784299532,
+          "epoch": 1784203134,
+          "delta": -96398
+        },
+        {
+          "line": 55001,
+          "previous_epoch": 1784213132,
+          "epoch": 1784116734,
+          "delta": -96398
+        },
+        {
+          "line": 60001,
+          "previous_epoch": 1784126732,
+          "epoch": 1784030334,
+          "delta": -96398
+        },
+        {
+          "line": 65001,
+          "previous_epoch": 1784040332,
+          "epoch": 1783943934,
+          "delta": -96398
+        },
+        {
+          "line": 70001,
+          "previous_epoch": 1783953932,
+          "epoch": 1783857534,
+          "delta": -96398
+        },
+        {
+          "line": 75001,
+          "previous_epoch": 1783867532,
+          "epoch": 1783771134,
+          "delta": -96398
+        },
+        {
+          "line": 80001,
+          "previous_epoch": 1783781132,
+          "epoch": 1783684734,
+          "delta": -96398
+        },
+        {
+          "line": 85001,
+          "previous_epoch": 1783694732,
+          "epoch": 1783598334,
+          "delta": -96398
+        },
+        {
+          "line": 90001,
+          "previous_epoch": 1783608332,
+          "epoch": 1783511934,
+          "delta": -96398
+        },
+        {
+          "line": 95001,
+          "previous_epoch": 1783521932,
+          "epoch": 1783425534,
+          "delta": -96398
+        },
+        {
+          "line": 100001,
+          "previous_epoch": 1783435532,
+          "epoch": 1783339134,
+          "delta": -96398
+        },
+        {
+          "line": 105001,
+          "previous_epoch": 1783349132,
+          "epoch": 1783252734,
+          "delta": -96398
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 2,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 15256367,
+      "largest_normalized_gap_seconds": 23025536,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2025-07-25 21:13:20",
+        "epoch": 1753478000
+      },
+      "raw_last_valid": {
+        "line": 500000,
+        "utc": "2026-04-18 14:45:32",
+        "epoch": 1776523532
+      },
+      "normalized_start_utc": "2025-07-25 21:13:20",
+      "normalized_start_epoch": 1753478000,
+      "normalized_end_utc": "2026-07-25 14:45:32",
+      "normalized_end_epoch": 1784990732
+    },
+    {
+      "symbol": "R_75",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/R_75.csv",
+      "normalized_path": "history-normalized/R_75.csv",
+      "raw_sha256": "0afb4e13041e72e8c0ef1d6d5fc28fce36466e41bd479ec8059c4cac35fd9af4",
+      "normalized_sha256": "f054575e11b2ae78a6835b8e3e77d50cbdb4eafa3236ebbe2638f51af9485c50",
+      "raw_size_bytes": 20943911,
+      "normalized_size_bytes": 20943911,
+      "rows_total": 500000,
+      "rows_valid_finite": 500000,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500000
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-25T14:59:01.868791+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499901,
+      "descending_transitions": 98,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 10001,
+          "previous_epoch": 1784991150,
+          "epoch": 1784894752,
+          "delta": -96398
+        },
+        {
+          "line": 15001,
+          "previous_epoch": 1784904750,
+          "epoch": 1784808352,
+          "delta": -96398
+        },
+        {
+          "line": 20001,
+          "previous_epoch": 1784818350,
+          "epoch": 1784721952,
+          "delta": -96398
+        },
+        {
+          "line": 25001,
+          "previous_epoch": 1784731950,
+          "epoch": 1784635552,
+          "delta": -96398
+        },
+        {
+          "line": 30001,
+          "previous_epoch": 1784645550,
+          "epoch": 1784549152,
+          "delta": -96398
+        },
+        {
+          "line": 35001,
+          "previous_epoch": 1784559150,
+          "epoch": 1784462752,
+          "delta": -96398
+        },
+        {
+          "line": 40001,
+          "previous_epoch": 1784472750,
+          "epoch": 1784376352,
+          "delta": -96398
+        },
+        {
+          "line": 45001,
+          "previous_epoch": 1784386350,
+          "epoch": 1784289952,
+          "delta": -96398
+        },
+        {
+          "line": 50001,
+          "previous_epoch": 1784299950,
+          "epoch": 1784203552,
+          "delta": -96398
+        },
+        {
+          "line": 55001,
+          "previous_epoch": 1784213550,
+          "epoch": 1784117152,
+          "delta": -96398
+        },
+        {
+          "line": 60001,
+          "previous_epoch": 1784127150,
+          "epoch": 1784030752,
+          "delta": -96398
+        },
+        {
+          "line": 65001,
+          "previous_epoch": 1784040750,
+          "epoch": 1783944352,
+          "delta": -96398
+        },
+        {
+          "line": 70001,
+          "previous_epoch": 1783954350,
+          "epoch": 1783857952,
+          "delta": -96398
+        },
+        {
+          "line": 75001,
+          "previous_epoch": 1783867950,
+          "epoch": 1783771552,
+          "delta": -96398
+        },
+        {
+          "line": 80001,
+          "previous_epoch": 1783781550,
+          "epoch": 1783685152,
+          "delta": -96398
+        },
+        {
+          "line": 85001,
+          "previous_epoch": 1783695150,
+          "epoch": 1783598752,
+          "delta": -96398
+        },
+        {
+          "line": 90001,
+          "previous_epoch": 1783608750,
+          "epoch": 1783512352,
+          "delta": -96398
+        },
+        {
+          "line": 95001,
+          "previous_epoch": 1783522350,
+          "epoch": 1783425952,
+          "delta": -96398
+        },
+        {
+          "line": 100001,
+          "previous_epoch": 1783435950,
+          "epoch": 1783339552,
+          "delta": -96398
+        },
+        {
+          "line": 105001,
+          "previous_epoch": 1783349550,
+          "epoch": 1783253152,
+          "delta": -96398
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 2,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 15256576,
+      "largest_normalized_gap_seconds": 23025954,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2025-07-25 21:13:20",
+        "epoch": 1753478000
+      },
+      "raw_last_valid": {
+        "line": 500000,
+        "utc": "2026-04-18 14:52:30",
+        "epoch": 1776523950
+      },
+      "normalized_start_utc": "2025-07-25 21:13:20",
+      "normalized_start_epoch": 1753478000,
+      "normalized_end_utc": "2026-07-25 14:52:30",
+      "normalized_end_epoch": 1784991150
+    },
+    {
+      "symbol": "R_100",
+      "source_path": "/home/sunandajayalathq/deriv_tick_downloader/data/R_100.csv",
+      "normalized_path": "history-normalized/R_100.csv",
+      "raw_sha256": "701ba58b1adee76533f0779301785430321ca2d9e9f7d762b8339d6ebe448b02",
+      "normalized_sha256": "6b7e71005d9935c70b6635d52b1673ae59608c36e636efa4692307feea13e276",
+      "raw_size_bytes": 18944801,
+      "normalized_size_bytes": 18944801,
+      "rows_total": 500000,
+      "rows_valid_finite": 500000,
+      "malformed_count": 0,
+      "malformed_examples": [],
+      "non_finite_price_count": 0,
+      "non_finite_examples": [],
+      "timestamp_units": {
+        "seconds": 500000
+      },
+      "utc_mismatch_count": 0,
+      "raw_mtime_utc": "2026-07-25T15:05:17.088542+00:00",
+      "raw_mode": "0o664",
+      "utc_mismatch_examples": [],
+      "source_order": "mixed",
+      "ascending_transitions": 499901,
+      "descending_transitions": 98,
+      "duplicate_transitions": 0,
+      "backward_jump_examples": [
+        {
+          "line": 10001,
+          "previous_epoch": 1784991544,
+          "epoch": 1784895146,
+          "delta": -96398
+        },
+        {
+          "line": 15001,
+          "previous_epoch": 1784905144,
+          "epoch": 1784808746,
+          "delta": -96398
+        },
+        {
+          "line": 20001,
+          "previous_epoch": 1784818744,
+          "epoch": 1784722346,
+          "delta": -96398
+        },
+        {
+          "line": 25001,
+          "previous_epoch": 1784732344,
+          "epoch": 1784635946,
+          "delta": -96398
+        },
+        {
+          "line": 30001,
+          "previous_epoch": 1784645944,
+          "epoch": 1784549546,
+          "delta": -96398
+        },
+        {
+          "line": 35001,
+          "previous_epoch": 1784559544,
+          "epoch": 1784463146,
+          "delta": -96398
+        },
+        {
+          "line": 40001,
+          "previous_epoch": 1784473144,
+          "epoch": 1784376746,
+          "delta": -96398
+        },
+        {
+          "line": 45001,
+          "previous_epoch": 1784386744,
+          "epoch": 1784290346,
+          "delta": -96398
+        },
+        {
+          "line": 50001,
+          "previous_epoch": 1784300344,
+          "epoch": 1784203946,
+          "delta": -96398
+        },
+        {
+          "line": 55001,
+          "previous_epoch": 1784213944,
+          "epoch": 1784117546,
+          "delta": -96398
+        },
+        {
+          "line": 60001,
+          "previous_epoch": 1784127544,
+          "epoch": 1784031146,
+          "delta": -96398
+        },
+        {
+          "line": 65001,
+          "previous_epoch": 1784041144,
+          "epoch": 1783944746,
+          "delta": -96398
+        },
+        {
+          "line": 70001,
+          "previous_epoch": 1783954744,
+          "epoch": 1783858346,
+          "delta": -96398
+        },
+        {
+          "line": 75001,
+          "previous_epoch": 1783868344,
+          "epoch": 1783771946,
+          "delta": -96398
+        },
+        {
+          "line": 80001,
+          "previous_epoch": 1783781944,
+          "epoch": 1783685546,
+          "delta": -96398
+        },
+        {
+          "line": 85001,
+          "previous_epoch": 1783695544,
+          "epoch": 1783599146,
+          "delta": -96398
+        },
+        {
+          "line": 90001,
+          "previous_epoch": 1783609144,
+          "epoch": 1783512746,
+          "delta": -96398
+        },
+        {
+          "line": 95001,
+          "previous_epoch": 1783522744,
+          "epoch": 1783426346,
+          "delta": -96398
+        },
+        {
+          "line": 100001,
+          "previous_epoch": 1783436344,
+          "epoch": 1783339946,
+          "delta": -96398
+        },
+        {
+          "line": 105001,
+          "previous_epoch": 1783349944,
+          "epoch": 1783253546,
+          "delta": -96398
+        }
+      ],
+      "duplicate_timestamp_keys": 0,
+      "duplicate_timestamp_rows": 0,
+      "expected_interval_seconds": 2,
+      "normalized_gap_count": 99,
+      "normalized_inconsistent_interval_count": 99,
+      "estimated_missing_intervals": 15256773,
+      "largest_normalized_gap_seconds": 23026348,
+      "raw_first_valid": {
+        "line": 1,
+        "utc": "2025-07-25 21:13:20",
+        "epoch": 1753478000
+      },
+      "raw_last_valid": {
+        "line": 500000,
+        "utc": "2026-04-18 14:59:04",
+        "epoch": 1776524344
+      },
+      "normalized_start_utc": "2025-07-25 21:13:20",
+      "normalized_start_epoch": 1753478000,
+      "normalized_end_utc": "2026-07-25 14:59:04",
+      "normalized_end_epoch": 1784991544
+    }
+  ],
+  "common_overlap": {
+    "exists": true,
+    "start_epoch": 1776478554,
+    "end_epoch": 1784989760,
+    "start_utc": "2026-04-18 02:15:54",
+    "end_utc": "2026-07-25 14:29:20",
+    "duration_seconds": 8511206,
+    "warning": "Bounding-range overlap is not synchronized coverage; use synchronized_coverage exact intersections."
+  },
+  "synchronized_coverage": {
+    "all_ten": {
+      "symbols": [
+        "1HZ100V",
+        "1HZ10V",
+        "1HZ25V",
+        "1HZ50V",
+        "1HZ75V",
+        "R_10",
+        "R_25",
+        "R_50",
+        "R_75",
+        "R_100"
+      ],
+      "expected_common_cadence_seconds": 2,
+      "bounding_range_overlap_exists": true,
+      "bounding_range_overlap_start_utc": "2026-04-18 02:15:54",
+      "bounding_range_overlap_end_utc": "2026-07-25 14:29:20",
+      "exact_common_timestamp_count": 0,
+      "exact_common_first_utc": null,
+      "exact_common_last_utc": null,
+      "contiguous_common_run_count": 0,
+      "longest_contiguous_common_run": null
+    },
+    "one_hz_family": {
+      "symbols": [
+        "1HZ100V",
+        "1HZ10V",
+        "1HZ25V",
+        "1HZ50V",
+        "1HZ75V"
+      ],
+      "expected_common_cadence_seconds": 1,
+      "bounding_range_overlap_exists": true,
+      "bounding_range_overlap_start_utc": "2026-04-18 02:15:54",
+      "bounding_range_overlap_end_utc": "2026-07-26 03:06:40",
+      "exact_common_timestamp_count": 304700,
+      "exact_common_first_utc": "2026-04-18 02:15:54",
+      "exact_common_last_utc": "2026-07-26 03:06:40",
+      "contiguous_common_run_count": 100,
+      "longest_contiguous_common_run": {
+        "start_utc": "2026-04-18 02:15:54",
+        "end_utc": "2026-04-18 03:06:40",
+        "timestamp_count": 3047,
+        "duration_seconds": 3046
+      }
+    },
+    "r_family": {
+      "symbols": [
+        "R_10",
+        "R_25",
+        "R_50",
+        "R_75",
+        "R_100"
+      ],
+      "expected_common_cadence_seconds": 2,
+      "bounding_range_overlap_exists": true,
+      "bounding_range_overlap_start_utc": "2025-07-25 21:13:20",
+      "bounding_range_overlap_end_utc": "2026-07-25 14:29:20",
+      "exact_common_timestamp_count": 411692,
+      "exact_common_first_utc": "2025-07-25 21:13:20",
+      "exact_common_last_utc": "2026-07-25 14:29:20",
+      "contiguous_common_run_count": 100,
+      "longest_contiguous_common_run": {
+        "start_utc": "2025-07-25 21:13:20",
+        "end_utc": "2025-07-25 23:59:58",
+        "timestamp_count": 5000,
+        "duration_seconds": 9998
+      }
+    }
+  }
+}

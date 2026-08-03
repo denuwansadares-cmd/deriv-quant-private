@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-03T16:18:44.642915+00:00",
+  "provider_or_supplier": "owner-supplied external directory; exact supplier unverified",
+  "source_directory": "/home/sunandajayalathq/deriv_tick_downloader/data",
+  "licence_status": "UNVERIFIED",
+  "ownership_status": "UNVERIFIED",
+  "permitted_purpose": "local audit and qualification only pending owner/legal confirmation",
+  "redistribution_permitted": false,
+  "transfer_permitted": false,
+  "retention_permission": "UNVERIFIED",
+  "territory": "UNVERIFIED",
+  "acquisition_dates": "UNVERIFIED",
+  "required_owner_action": "Document supplier, licence text/version, acquisition dates, permitted uses, retention, deletion, redistribution, transfer and territory before distribution.",
+  "derivation": "Valid finite rows canonicalized to UTC and sorted ascending; originals not modified; duplicates retained and reported.",
+  "files": [
+    {
+      "symbol": "1HZ100V",
+      "raw_sha256": "852330697232b9d638a476bfa8ab9a487ac828f8a281f915d7a09fa1f0065188",
+      "normalized_sha256": "84e83a8ea833ff488f1b5ebe491ccf9cf27fc535ff456ede5c65505c1f7599f7",
+      "rows_valid_finite": 500000,
+      "normalized_start_utc": "2026-04-18 02:15:54",
+      "normalized_end_utc": "2026-07-26 03:39:13"
+    },
+    {
+      "symbol": "1HZ10V",
+      "raw_sha256": "f96191e283c39e090d3ab69d67fdaa25d63337723ff13dd41ae3311efa926e45",
+      "normalized_sha256": "106651d49e55f00c8eb168201070ae98ba0bed5d068259d830c0db8487fecbb8",
+      "rows_valid_finite": 500000,
+      "normalized_start_utc": "2026-04-18 01:43:21",
+      "normalized_end_utc": "2026-07-26 03:06:40"
+    },
+    {
+      "symbol": "1HZ25V",
+      "raw_sha256": "77010cd08e11dda06d89c038c1a3a90b0d7380cc1226a1e0bb9e5baa1aa28520",
+      "normalized_sha256": "10078493d69c68b78df32d74875d41a51e7823fe33b8038d12df7213fcef9838",
+      "rows_valid_finite": 500000,
+      "normalized_start_utc": "2026-04-18 01:52:07",
+      "normalized_end_utc": "2026-07-26 03:15:26"
+    },
+    {
+      "symbol": "1HZ50V",
+      "raw_sha256": "8ca497ecf6b730fe6188902872d44416d0288ba15261c3914dc76361eb149520",
+      "normalized_sha256": "1ad7d2fc906c5023eb8e9cb191562f3d61c92d6506da880d71504c5546483d46",
+      "rows_valid_finite": 500000,
+      "normalized_start_utc": "2026-04-18 02:00:15",
+      "normalized_end_utc": "2026-07-26 03:23:34"
+    },
+    {
+      "symbol": "1HZ75V",
+      "raw_sha256": "e2210459787a523d5048666d60435e158a49104fa41e566cbf43348f10c29c0c",
+      "normalized_sha256": "36ae0da185ae8df07edb613afe505c0eb96329b84d40cb06b3f54442a0e9ffd7",
+      "rows_valid_finite": 500000,
+      "normalized_start_utc": "2026-04-18 02:08:17",
+      "normalized_end_utc": "2026-07-26 03:31:36"
+    },
+    {
+      "symbol": "R_10",
+      "raw_sha256": "4f55af50775c8660dc03beab9648f889f89d80b33a9e58799415bb60616ab6a5",
+      "normalized_sha256": "346367ed2a878d2897fb2c617b95cf287f40e916d76cd9838830b014484d1cf9",
+      "rows_valid_finite": 500017,
+      "normalized_start_utc": "2025-07-25 21:12:46",
+      "normalized_end_utc": "2026-07-25 14:29:20"
+    },
+    {
+      "symbol": "R_25",
+      "raw_sha256": "58113e1ebd86ee89e8beb1711a314f507e77ad2fafd5d929cf548a56944c3701",
+      "normalized_sha256": "964d219ff912ca62824a7c77ca8f2b1a5fedb26a7335971370dfe79202917d07",
+      "rows_valid_finite": 500000,
+      "normalized_start_utc": "2025-07-25 21:13:20",
+      "normalized_end_utc": "2026-07-25 14:37:44"
+    },
+    {
+      "symbol": "R_50",
+      "raw_sha256": "2a342f3c1c3b953312586d0a3113810843fe8581da1d6be65ad0a6c07c398aaa",
+      "normalized_sha256": "4999f922541d21d0116ee9ac4adaf3ed18911ecab71e784f121f84d5f86f88f9",
+      "rows_valid_finite": 500000,
+      "normalized_start_utc": "2025-07-25 21:13:20",
+      "normalized_end_utc": "2026-07-25 14:45:32"
+    },
+    {
+      "symbol": "R_75",
+      "raw_sha256": "0afb4e13041e72e8c0ef1d6d5fc28fce36466e41bd479ec8059c4cac35fd9af4",
+      "normalized_sha256": "f054575e11b2ae78a6835b8e3e77d50cbdb4eafa3236ebbe2638f51af9485c50",
+      "rows_valid_finite": 500000,
+      "normalized_start_utc": "2025-07-25 21:13:20",
+      "normalized_end_utc": "2026-07-25 14:52:30"
+    },
+    {
+      "symbol": "R_100",
+      "raw_sha256": "701ba58b1adee76533f0779301785430321ca2d9e9f7d762b8339d6ebe448b02",
+      "normalized_sha256": "6b7e71005d9935c70b6635d52b1673ae59608c36e636efa4692307feea13e276",
+      "rows_valid_finite": 500000,
+      "normalized_start_utc": "2025-07-25 21:13:20",
+      "normalized_end_utc": "2026-07-25 14:59:04"
+    }
+  ],
+  "common_overlap": {
+    "exists": true,
+    "start_epoch": 1776478554,
+    "end_epoch": 1784989760,
+    "start_utc": "2026-04-18 02:15:54",
+    "end_utc": "2026-07-25 14:29:20",
+    "duration_seconds": 8511206
+  },
+  "synchronized_coverage": {
+    "all_ten": {
+      "symbols": [
+        "1HZ100V",
+        "1HZ10V",
+        "1HZ25V",
+        "1HZ50V",
+        "1HZ75V",
+        "R_10",
+        "R_25",
+        "R_50",
+        "R_75",
+        "R_100"
+      ],
+      "expected_common_cadence_seconds": 2,
+      "bounding_range_overlap_exists": true,
+      "bounding_range_overlap_start_utc": "2026-04-18 02:15:54",
+      "bounding_range_overlap_end_utc": "2026-07-25 14:29:20",
+      "exact_common_timestamp_count": 0,
+      "exact_common_first_utc": null,
+      "exact_common_last_utc": null,
+      "contiguous_common_run_count": 0,
+      "longest_contiguous_common_run": null
+    },
+    "one_hz_family": {
+      "symbols": [
+        "1HZ100V",
+        "1HZ10V",
+        "1HZ25V",
+        "1HZ50V",
+        "1HZ75V"
+      ],
+      "expected_common_cadence_seconds": 1,
+      "bounding_range_overlap_exists": true,
+      "bounding_range_overlap_start_utc": "2026-04-18 02:15:54",
+      "bounding_range_overlap_end_utc": "2026-07-26 03:06:40",
+      "exact_common_timestamp_count": 304700,
+      "exact_common_first_utc": "2026-04-18 02:15:54",
+      "exact_common_last_utc": "2026-07-26 03:06:40",
+      "contiguous_common_run_count": 100,
+      "longest_contiguous_common_run": {
+        "start_utc": "2026-04-18 02:15:54",
+        "end_utc": "2026-04-18 03:06:40",
+        "timestamp_count": 3047,
+        "duration_seconds": 3046
+      }
+    },
+    "r_family": {
+      "symbols": [
+        "R_10",
+        "R_25",
+        "R_50",
+        "R_75",
+        "R_100"
+      ],
+      "expected_common_cadence_seconds": 2,
+      "bounding_range_overlap_exists": true,
+      "bounding_range_overlap_start_utc": "2025-07-25 21:13:20",
+      "bounding_range_overlap_end_utc": "2026-07-25 14:29:20",
+      "exact_common_timestamp_count": 411692,
+      "exact_common_first_utc": "2025-07-25 21:13:20",
+      "exact_common_last_utc": "2026-07-25 14:29:20",
+      "contiguous_common_run_count": 100,
+      "longest_contiguous_common_run": {
+        "start_utc": "2025-07-25 21:13:20",
+        "end_utc": "2025-07-25 23:59:58",
+        "timestamp_count": 5000,
+        "duration_seconds": 9998
+      }
+    }
+  },
+  "qualification_restriction": "No combined cross-market/rotation holdout claim is permitted when all_ten exact_common_timestamp_count is zero. Per-symbol work remains conditional on licence and chronological split validation."
+}
