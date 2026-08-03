@@ -1,41 +1,53 @@
-static RISK_V2: std::sync::OnceLock<parking_lot::Mutex<RiskEngineV2>> = std::sync::OnceLock::new();
+static AUTHORITATIVE_RISK: std::sync::OnceLock<Arc<RwLock<RiskManager>>> = std::sync::OnceLock::new();
 static RUNTIME_LOCK: std::sync::OnceLock<fs::File> = std::sync::OnceLock::new();
 const STOP_STATE_NAME: &str = "stop-state.json";
 const MANUAL_STOP_NAME: &str = "emergency.stop";
 const HEARTBEAT_NAME: &str = "runtime-heartbeat";
 const LOCK_NAME: &str = "runtime.lock";
 
-fn risk_state_dir() -> std::path::PathBuf {
-    env::var("DERIV_RISK_STATE_DIR").ok().filter(|v| !v.trim().is_empty())
-        .map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(".risk"))
+fn risk_state_dir() -> PathBuf {
+    env::var("DERIV_RISK_STATE_DIR")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(".risk"))
 }
-fn risk_path(name: &str) -> std::path::PathBuf { risk_state_dir().join(name) }
+fn risk_path(name: &str) -> PathBuf { risk_state_dir().join(name) }
 
 #[cfg(unix)]
 fn secure_options() -> fs::OpenOptions {
     use std::os::unix::fs::OpenOptionsExt;
     let mut options = fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true).mode(0o600);
+    options.write(true).create_new(true).mode(0o600);
     options
 }
 #[cfg(not(unix))]
 fn secure_options() -> fs::OpenOptions {
     let mut options = fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     options
 }
 
 fn atomic_secure_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let directory = path.parent().ok_or_else(|| std::io::Error::other("missing parent"))?;
     fs::create_dir_all(directory)?;
-    let temp = directory.join(format!(".{}.tmp-{}", path.file_name().unwrap_or_default().to_string_lossy(), std::process::id()));
-    let mut file = secure_options().open(&temp)?;
-    use std::io::Write;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    fs::rename(&temp, path)?;
-    fs::File::open(directory)?.sync_all()?;
-    Ok(())
+    #[cfg(unix)] {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o700))?;
+    }
+    let nonce = OsRng.next_u64();
+    let temporary = directory.join(format!(".{}.tmp-{}-{nonce}", path.file_name().unwrap_or_default().to_string_lossy(), std::process::id()));
+    let result = (|| {
+        let mut file = secure_options().open(&temporary)?;
+        use std::io::Write;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        fs::rename(&temporary, path)?;
+        fs::File::open(directory)?.sync_all()?;
+        Ok(())
+    })();
+    if result.is_err() { let _ = fs::remove_file(&temporary); }
+    result
 }
 
 fn acquire_runtime_lock() -> Result<()> {
@@ -63,107 +75,211 @@ fn acquire_runtime_lock() -> Result<()> {
     RUNTIME_LOCK.set(file).map_err(|_| anyhow::anyhow!("runtime lock already held"))
 }
 
-struct RiskEngineV2 {
-    balance_minor: i64,
-    max_stake_minor: i64,
-    expected_loss_limit_minor: i64,
-    market_budget_minor: i64,
-    family_budget_minor: i64,
-    maximum_open_exposure_minor: i64,
-    open_exposure_minor: i64,
-    session_pnl_minor: i64,
-    consecutive_losses: u32,
-    loss_throttle_until_ms: i64,
-    last_tick_ms: i64,
-    api_events: u64,
-    api_errors: u64,
-    confirmed_proposals: std::collections::HashSet<String>,
-    stopped: bool,
-    stop_reason: Option<String>,
-}
-
-fn init_risk_v2(balance: Money) -> Result<()> {
+fn init_risk_state(risk: Arc<RwLock<RiskManager>>) -> Result<()> {
     fs::create_dir_all(risk_state_dir())?;
     acquire_runtime_lock()?;
+    AUTHORITATIVE_RISK.set(risk.clone()).map_err(|_| anyhow::anyhow!("authoritative risk state already initialized"))?;
     let stop_path = risk_path(STOP_STATE_NAME);
     let manual = risk_path(MANUAL_STOP_NAME).exists();
-    let mut persisted = stop_path.exists();
-    let mut reason = persisted.then(|| "persistent stop state exists".to_string());
-    if persisted {
+    let mut stop_reason = None;
+    if stop_path.exists() {
         let valid = fs::read_to_string(&stop_path).ok()
             .and_then(|value| serde_json::from_str::<serde_json::Value>(&value).ok())
             .is_some_and(|value| value["stopped"].as_bool() == Some(true));
-        if !valid {
-            let corrupt = risk_state_dir().join(format!("stop-state.corrupt-{}.json", Utc::now().timestamp_millis()));
-            let _ = fs::rename(&stop_path, corrupt);
-            atomic_secure_write(&stop_path, serde_json::json!({"stopped":true,"reason":"corrupt stop state recovered fail-closed","at_ms":Utc::now().timestamp_millis()}).to_string().as_bytes())?;
-            reason = Some("corrupt stop state recovered fail-closed".to_string());
-            persisted = true;
-        }
+        stop_reason = Some(if valid { "persistent stop state exists" } else { "corrupt stop state recovered fail-closed" }.to_string());
     }
-    if manual { persisted = true; reason = Some("manual emergency stop exists".to_string()); }
-    let engine = RiskEngineV2 {
-        balance_minor: balance.0,
-        max_stake_minor: HARD_MAX_STAKE_MINOR,
-        expected_loss_limit_minor: (balance.0 / 100).max(MIN_STAKE_MINOR),
-        market_budget_minor: (balance.0 * 2 / 100).max(MIN_STAKE_MINOR),
-        family_budget_minor: (balance.0 * 5 / 100).max(MIN_STAKE_MINOR),
-        maximum_open_exposure_minor: (balance.0 * 2 / 100).max(MIN_STAKE_MINOR),
-        open_exposure_minor: 0, session_pnl_minor: 0, consecutive_losses: 0,
-        loss_throttle_until_ms: 0, last_tick_ms: Utc::now().timestamp_millis(),
-        api_events: 0, api_errors: 0, confirmed_proposals: std::collections::HashSet::new(),
-        stopped: persisted, stop_reason: reason,
-    };
-    RISK_V2.set(parking_lot::Mutex::new(engine))
-        .map_err(|_| anyhow::anyhow!("Risk Engine v2 already initialized"))
+    if manual { stop_reason = Some("manual emergency stop exists".to_string()); }
+    if let Some(reason) = stop_reason {
+        risk.write().engage_stop(reason.clone());
+        persist_risk_stop(&reason);
+    }
+    Ok(())
+}
+
+fn mark_persistence_failure(context: &str, error: &std::io::Error) {
+    if let Some(risk) = AUTHORITATIVE_RISK.get() {
+        let mut risk = risk.write();
+        risk.persistence_healthy = false;
+        risk.engage_stop(format!("risk persistence failure: {context}"));
+    }
+    log::error!("Risk persistence failure during {}: {}", context, error);
 }
 
 fn persist_risk_stop(reason: &str) {
     let body = serde_json::json!({"stopped":true,"reason":reason,"at_ms":Utc::now().timestamp_millis()}).to_string();
-    let _ = atomic_secure_write(&risk_path(STOP_STATE_NAME), body.as_bytes());
-    journal_event("risk_v2_stop", serde_json::json!({"reason":reason}));
+    if let Err(error) = atomic_secure_write(&risk_path(STOP_STATE_NAME), body.as_bytes()) {
+        mark_persistence_failure("stop-state write", &error);
+    }
+    journal_event("risk_stop", serde_json::json!({"reason":reason}));
 }
+
 fn risk_v2_stop(reason: impl Into<String>) {
     let reason = reason.into();
-    if let Some(engine) = RISK_V2.get() { let mut engine=engine.lock(); engine.stopped=true; engine.stop_reason=Some(reason.clone()); }
+    if let Some(risk) = AUTHORITATIVE_RISK.get() { risk.write().engage_stop(reason.clone()); }
     persist_risk_stop(&reason);
 }
+
 fn risk_v2_observe_tick() {
-    if let Some(engine)=RISK_V2.get(){let mut engine=engine.lock();engine.last_tick_ms=Utc::now().timestamp_millis();engine.api_events+=1;}
-}
-fn risk_v2_observe_api_error() {
-    if let Some(engine)=RISK_V2.get(){let mut engine=engine.lock();engine.api_events+=1;engine.api_errors+=1;
-        if engine.api_events>=20 && engine.api_errors as f64/engine.api_events as f64>=0.20{drop(engine);risk_v2_stop("API error-rate kill switch");}}
-}
-fn risk_v2_confirm_proposal(id:&str){if let Some(engine)=RISK_V2.get(){engine.lock().confirmed_proposals.insert(id.to_string());}}
-fn risk_v2_pre_trade(command:&ApiCommand)->std::result::Result<(),String>{
-    let Some(engine)=RISK_V2.get() else{return Ok(())};let mut engine=engine.lock();
-    if risk_path(MANUAL_STOP_NAME).exists(){drop(engine);risk_v2_stop("manual emergency stop file detected");return Err("manual emergency stop".into())}
-    if engine.stopped{return Err(engine.stop_reason.clone().unwrap_or_else(||"stopped".into()))}
-    if Utc::now().timestamp_millis()-engine.last_tick_ms>WS_STALE_TIMEOUT_SECS as i64*1000{drop(engine);risk_v2_stop("stale-data kill switch");return Err("stale market data".into())}
-    match command {
-        ApiCommand::RequestProposal{amount,..}|ApiCommand::RequestOverUnder{amount,..}|ApiCommand::RequestMatchesDiff{amount,..}|ApiCommand::RequestRiseFall{amount,..}=>{
-            let stake=Money::from_api(*amount).ok_or_else(||"invalid stake".to_string())?.0;
-            if stake>engine.max_stake_minor{return Err("hard stake ceiling".into())}
-            if stake>engine.expected_loss_limit_minor{return Err("expected-loss ceiling".into())}
-            if stake>engine.market_budget_minor||stake>engine.family_budget_minor{return Err("market/family budget".into())}
-            if engine.open_exposure_minor+stake>engine.maximum_open_exposure_minor{return Err("maximum open exposure".into())}
-            if Utc::now().timestamp_millis()<engine.loss_throttle_until_ms{return Err("consecutive-loss cooldown".into())}
-        }
-        ApiCommand::BuyContract{proposal_id,price}=>{
-            if proposal_id.trim().is_empty()||!price.is_finite()||*price<=0.0{return Err("no proposal/no confirmed ID = no buy".into())}
-            if !engine.confirmed_proposals.remove(proposal_id){return Err("proposal ID was not confirmed".into())}
-        }
-        _=>{}
-    } Ok(())
-}
-fn risk_v2_contract_opened(cost:f64){if let Some(engine)=RISK_V2.get(){if let Some(cost)=Money::from_api(cost){engine.lock().open_exposure_minor+=cost.0}}}
-fn risk_v2_post_trade(pnl:f64){
-    if let Some(engine)=RISK_V2.get(){let mut engine=engine.lock();let pnl_minor=Money::from_api(pnl.abs()).map_or(0,|m|if pnl<0.0{-m.0}else{m.0});
-        engine.session_pnl_minor+=pnl_minor;engine.open_exposure_minor=0;engine.consecutive_losses=if pnl_minor<0{engine.consecutive_losses+1}else{0};
-        if engine.consecutive_losses>=3{engine.loss_throttle_until_ms=Utc::now().timestamp_millis()+60_000;engine.consecutive_losses=0}
-        if engine.session_pnl_minor<=-(engine.balance_minor*SESSION_LOSS_LIMIT_BPS/10_000){drop(engine);risk_v2_stop("daily/session loss limit")}
+    if let Some(risk) = AUTHORITATIVE_RISK.get() {
+        let mut risk = risk.write();
+        risk.safety_last_tick_ms = Utc::now().timestamp_millis();
+        risk.safety_api_events = risk.safety_api_events.saturating_add(1);
     }
 }
-fn risk_v2_post_trade_invariants(){if let Some(engine)=RISK_V2.get(){let engine=engine.lock();if engine.open_exposure_minor<0||engine.open_exposure_minor>engine.maximum_open_exposure_minor{drop(engine);risk_v2_stop("post-trade exposure invariant failed")}}}
-fn write_runtime_heartbeat(){let _=atomic_secure_write(&risk_path(HEARTBEAT_NAME),Utc::now().timestamp_millis().to_string().as_bytes());}
+fn risk_v2_observe_api_error() {
+    let should_stop = if let Some(risk) = AUTHORITATIVE_RISK.get() {
+        let mut risk = risk.write();
+        risk.safety_api_events = risk.safety_api_events.saturating_add(1);
+        risk.safety_api_errors = risk.safety_api_errors.saturating_add(1);
+        risk.safety_api_events >= 20 && risk.safety_api_errors as f64 / risk.safety_api_events as f64 >= 0.20
+    } else { true };
+    if should_stop { risk_v2_stop("API error-rate kill switch"); }
+}
+fn risk_v2_confirm_proposal(id: &str, price: f64) {
+    if let (Some(risk), Some(price)) = (AUTHORITATIVE_RISK.get(), Money::from_api(price)) {
+        risk.write().safety_confirmed_proposals.insert(id.to_string(), (price, Utc::now().timestamp_millis()));
+    }
+}
+fn risk_v2_pre_trade(command: &ApiCommand) -> std::result::Result<(), String> {
+    let Some(shared) = AUTHORITATIVE_RISK.get() else { return Err("authoritative risk state unavailable".into()) };
+    if risk_path(MANUAL_STOP_NAME).exists() { risk_v2_stop("manual emergency stop file detected"); }
+    let mut risk = shared.write();
+    let stopped = risk.is_stopped();
+    match command {
+        ApiCommand::SellContract { contract_id } => {
+            if contract_id.trim().is_empty() || !risk.safety_open_contracts.contains_key(contract_id) {
+                return Err("sell rejected: contract is not an existing tracked exposure".into());
+            }
+            return Ok(());
+        }
+        ApiCommand::SubscribeContract { contract_id } => {
+            if contract_id.trim().is_empty() || !risk.safety_open_contracts.contains_key(contract_id) {
+                return Err("subscription rejected: unknown contract".into());
+            }
+            return Ok(());
+        }
+        ApiCommand::RequestPortfolio => return Ok(()),
+        _ if stopped => return Err(risk.stop_reason.clone().unwrap_or_else(|| "stopped".into())),
+        _ => {}
+    }
+    let now = Utc::now().timestamp_millis();
+    if now - risk.safety_last_tick_ms > WS_STALE_TIMEOUT_SECS as i64 * 1000 {
+        drop(risk);
+        risk_v2_stop("stale-data kill switch");
+        return Err("stale market data".into());
+    }
+    match command {
+        ApiCommand::RequestProposal { amount, .. }
+        | ApiCommand::RequestOverUnder { amount, .. }
+        | ApiCommand::RequestMatchesDiff { amount, .. }
+        | ApiCommand::RequestRiseFall { amount, .. } => {
+            let stake = Money::from_api(*amount).ok_or_else(|| "invalid stake".to_string())?;
+            let expected_loss_limit = (risk.verified_balance.0 / 100).max(MIN_STAKE_MINOR);
+            let market_budget = (risk.verified_balance.0 * 2 / 100).max(MIN_STAKE_MINOR);
+            let family_budget = (risk.verified_balance.0 * 5 / 100).max(MIN_STAKE_MINOR);
+            let maximum_exposure = market_budget;
+            if stake.0 > HARD_MAX_STAKE_MINOR { return Err("hard stake ceiling".into()); }
+            if stake.0 > expected_loss_limit { return Err("expected-loss ceiling".into()); }
+            if stake.0 > market_budget || stake.0 > family_budget { return Err("market/family budget".into()); }
+            let open_exposure = risk.safety_open_contracts.values().map(|money| money.0).sum::<i64>();
+            if open_exposure.saturating_add(stake.0) > maximum_exposure { return Err("maximum open exposure".into()); }
+            if now < risk.safety_loss_throttle_until_ms { return Err("consecutive-loss cooldown".into()); }
+        }
+        ApiCommand::BuyContract { proposal_id, price } => {
+            let final_price = Money::from_api(*price).ok_or_else(|| "invalid final buy price".to_string())?;
+            let Some((confirmed_price, confirmed_at)) = risk.safety_confirmed_proposals.remove(proposal_id) else {
+                return Err("no confirmed proposal ID = no buy".into());
+            };
+            if final_price != confirmed_price { return Err("final buy price differs from confirmed proposal".into()); }
+            if now.saturating_sub(confirmed_at) > PROPOSAL_MAX_AGE_SECS as i64 * 1000 { return Err("proposal expired before buy".into()); }
+            let maximum_exposure = (risk.verified_balance.0 * 2 / 100).max(MIN_STAKE_MINOR);
+            let open_exposure = risk.safety_open_contracts.values().map(|money| money.0).sum::<i64>();
+            if final_price.0 > HARD_MAX_STAKE_MINOR || open_exposure.saturating_add(final_price.0) > maximum_exposure {
+                return Err("buy-time price/exposure ceiling".into());
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+fn risk_v2_contract_opened(contract_id: &str, cost: f64) {
+    if let (Some(risk), Some(cost)) = (AUTHORITATIVE_RISK.get(), Money::from_api(cost)) {
+        risk.write().safety_open_contracts.insert(contract_id.to_string(), cost);
+    }
+}
+fn risk_v2_contract_closed(contract_id: &str, pnl: f64) {
+    if let Some(risk) = AUTHORITATIVE_RISK.get() {
+        let mut risk = risk.write();
+        risk.safety_open_contracts.remove(contract_id);
+        if pnl < 0.0 && risk.consecutive_losses >= 3 {
+            risk.safety_loss_throttle_until_ms = Utc::now().timestamp_millis() + 60_000;
+        }
+    }
+}
+fn risk_v2_post_trade_invariants() {
+    if let Some(risk) = AUTHORITATIVE_RISK.get() {
+        let risk = risk.read();
+        let exposure = risk.safety_open_contracts.values().map(|money| money.0).sum::<i64>();
+        let maximum = (risk.verified_balance.0 * 2 / 100).max(MIN_STAKE_MINOR);
+        if exposure < 0 || exposure > maximum { drop(risk); risk_v2_stop("post-trade exposure invariant failed"); }
+    }
+}
+fn write_runtime_heartbeat() {
+    if let Err(error) = atomic_secure_write(&risk_path(HEARTBEAT_NAME), Utc::now().timestamp_millis().to_string().as_bytes()) {
+        mark_persistence_failure("heartbeat write", &error);
+    }
+}
+
+#[cfg(test)]
+mod authoritative_risk_tests {
+    use super::*;
+
+    #[test]
+    fn stop_rejects_entry_but_allows_only_tracked_reduce_only_sell() {
+        let directory = std::env::temp_dir().join(format!(
+            "deriv-risk-authoritative-{}-{}",
+            std::process::id(),
+            OsRng.next_u64()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        std::env::set_var("DERIV_RISK_STATE_DIR", &directory);
+        let risk = Arc::new(RwLock::new(RiskManager::with_mode(
+            Money(100_000),
+            TradingMode::Demo,
+        )));
+        assert!(AUTHORITATIVE_RISK.set(risk).is_ok());
+
+        let proposal = ApiCommand::RequestProposal {
+            underlying_symbol: "R_100".into(),
+            currency: "USD".into(),
+            amount: 1.0,
+            growth_rate: 0.01,
+        };
+        assert!(risk_v2_pre_trade(&proposal).is_ok());
+        risk_v2_confirm_proposal("proposal-1", 1.0);
+        assert!(risk_v2_pre_trade(&ApiCommand::BuyContract {
+            proposal_id: "proposal-1".into(),
+            price: 1.0,
+        })
+        .is_ok());
+        risk_v2_contract_opened("contract-1", 1.0);
+        risk_v2_stop("test emergency stop");
+
+        assert!(risk_v2_pre_trade(&proposal).is_err());
+        assert!(risk_v2_pre_trade(&ApiCommand::BuyContract {
+            proposal_id: "proposal-2".into(),
+            price: 1.0,
+        })
+        .is_err());
+        assert!(risk_v2_pre_trade(&ApiCommand::SellContract {
+            contract_id: "contract-1".into(),
+        })
+        .is_ok());
+        assert!(risk_v2_pre_trade(&ApiCommand::SellContract {
+            contract_id: "unknown-contract".into(),
+        })
+        .is_err());
+        assert!(directory.join(STOP_STATE_NAME).is_file());
+        fs::remove_dir_all(directory).unwrap();
+    }
+}

@@ -181,10 +181,8 @@ fn handle(mut s: TcpStream) -> std::io::Result<()> {
 fn main() -> std::io::Result<()> {
     let address = bind_address();
     println!("Safe demo dashboard: http://{address} (live trading unavailable)");
-    for stream in TcpListener::bind(address)?.incoming() {
-        if let Ok(stream) = stream {
-            let _ = handle(stream);
-        }
+    for stream in TcpListener::bind(address)?.incoming().flatten() {
+        let _ = handle(stream);
     }
     Ok(())
 }

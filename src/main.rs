@@ -209,8 +209,21 @@ async fn main() -> Result<()> {
                 mode_str
             )
         })?;
-    init_risk_v2(verified_balance)?;
-    tokio::spawn(async {
+    let trading_mode = if mode_str == "live" {
+        TradingMode::Live
+    } else {
+        TradingMode::Demo
+    };
+    let risk_manager = Arc::new(RwLock::new(RiskManager::with_mode(
+        verified_balance,
+        trading_mode,
+    )));
+    init_risk_state(risk_manager.clone())?;
+    anyhow::ensure!(
+        !risk_manager.read().is_stopped(),
+        "persistent risk stop is engaged; operator review is required"
+    );
+    let heartbeat_task = tokio::spawn(async {
         let mut heartbeat = interval(Duration::from_secs(1));
         loop {
             heartbeat.tick().await;
@@ -254,11 +267,6 @@ async fn main() -> Result<()> {
         &symbols,
         TICK_BUFFER_CAP,
     )?));
-    let trading_mode = if mode_str == "live" {
-        TradingMode::Live
-    } else {
-        TradingMode::Demo
-    };
     let qualification_gate = Arc::new(QualificationGate::load()?);
     for (index, name) in MODEL_NAMES.iter().enumerate() {
         log::info!(
@@ -268,10 +276,6 @@ async fn main() -> Result<()> {
             qualification_gate.reasons[index]
         );
     }
-    let risk_manager = Arc::new(RwLock::new(RiskManager::with_mode(
-        verified_balance,
-        trading_mode,
-    )));
     let index_rotator = Arc::new(RwLock::new(IndexRotator::new(symbols.clone())));
     let tick_counter = Arc::new(AtomicU64::new(0));
     let total_latency_us = Arc::new(AtomicU64::new(0));
@@ -1114,7 +1118,7 @@ async fn main() -> Result<()> {
                     payout,
                     underlying_symbol,
                 }) => {
-                    risk_v2_confirm_proposal(&id);
+                    risk_v2_confirm_proposal(&id, ask_price);
                     journal_event(
                         "order_result",
                         serde_json::json!({
@@ -1223,7 +1227,7 @@ async fn main() -> Result<()> {
                     }
                 }
                 Ok(ApiEvent::ContractOpened { contract_id, .. }) => {
-                    risk_v2_contract_opened(pending_buy_cost);
+                    risk_v2_contract_opened(&contract_id, pending_buy_cost);
                     journal_event(
                         "order_result",
                         serde_json::json!({
@@ -1265,10 +1269,10 @@ async fn main() -> Result<()> {
                     let settled_result = TradeResult {
                         profit_loss: sold_for - active_buy_cost,
                     };
-                    risk_v2_post_trade(settled_result.profit_loss);
-                    risk_v2_post_trade_invariants();
                     rm1.write()
                         .record_trade_typed(&settled_result, active_contract_type);
+                    risk_v2_contract_closed(&contract_id, settled_result.profit_loss);
+                    risk_v2_post_trade_invariants();
                     let previous_type = selected_contract_type;
                     let decision = contract_strategy.after_outcome(ContractOutcome {
                         contract_type: active_contract_type,
@@ -1780,6 +1784,8 @@ async fn main() -> Result<()> {
     }
 
     let _ = api.shutdown_tx.send(());
+    heartbeat_task.abort();
+    let _ = heartbeat_task.await;
     sleep(Duration::from_secs(2)).await;
 
     let rm = risk_manager.read();

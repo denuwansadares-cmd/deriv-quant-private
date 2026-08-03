@@ -475,8 +475,12 @@ fn every_implemented_contract_family_has_a_command_shape() {
     assert_eq!(ContractType::OverUnder.to_string(), "OVER_UNDER");
     assert_eq!(ContractType::MatchesDiff.to_string(), "MATCHES_DIFF");
     assert_eq!(ContractType::RiseFall.to_string(), "RISE_FALL");
-    assert!(!ENABLE_RANDOM_CONTRACT_FAMILIES);
-    assert!(!ENABLE_RISE_FALL);
+    const {
+        assert!(!ENABLE_RANDOM_CONTRACT_FAMILIES);
+    }
+    const {
+        assert!(!ENABLE_RISE_FALL);
+    }
 
     for (_, command) in commands {
         match command {

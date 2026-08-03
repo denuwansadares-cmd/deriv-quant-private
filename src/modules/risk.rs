@@ -26,6 +26,14 @@ struct RiskManager {
     profit_cooldown_until: Option<Instant>,
     stopped: Arc<AtomicBool>,
     per_type_stats: HashMap<ContractType, ContractTypeStats>,
+    safety_open_contracts: HashMap<String, Money>,
+    safety_confirmed_proposals: HashMap<String, (Money, i64)>,
+    safety_last_tick_ms: i64,
+    safety_api_events: u64,
+    safety_api_errors: u64,
+    safety_loss_throttle_until_ms: i64,
+    stop_reason: Option<String>,
+    persistence_healthy: bool,
 }
 
 impl RiskManager {
@@ -61,6 +69,14 @@ impl RiskManager {
             profit_cooldown_until: None,
             stopped: Arc::new(AtomicBool::new(false)),
             per_type_stats: HashMap::new(),
+            safety_open_contracts: HashMap::new(),
+            safety_confirmed_proposals: HashMap::new(),
+            safety_last_tick_ms: Utc::now().timestamp_millis(),
+            safety_api_events: 0,
+            safety_api_errors: 0,
+            safety_loss_throttle_until_ms: 0,
+            stop_reason: None,
+            persistence_healthy: true,
         }
     }
 
@@ -197,9 +213,7 @@ impl RiskManager {
                 self.total_trades,
                 self.mode
             );
-            self.mode = TradingMode::Stopped;
-            self.stopped.store(true, Ordering::SeqCst);
-            self.profit_cooldown_until = None;
+            self.engage_stop("hard session loss circuit breaker");
         }
 
         // Ordinary losses do not pause sequential trading. Only unrecovered
@@ -237,8 +251,14 @@ impl RiskManager {
     fn accumulator_stake(&self, configured_base: f64) -> f64 {
         self.stake_for_risk(0.0).min(deriv_stake(configured_base))
     }
+    fn engage_stop(&mut self, reason: impl Into<String>) {
+        self.stop_reason = Some(reason.into());
+        self.mode = TradingMode::Stopped;
+        self.stopped.store(true, Ordering::SeqCst);
+        self.profit_cooldown_until = None;
+    }
     fn is_stopped(&self) -> bool {
-        self.stopped.load(Ordering::SeqCst)
+        self.stopped.load(Ordering::SeqCst) || self.mode == TradingMode::Stopped
     }
     fn type_summary(&self) -> String {
         [
