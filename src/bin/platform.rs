@@ -12,6 +12,7 @@ const MAX_CONNECTIONS: usize = 32;
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 type Attempts = Arc<Mutex<HashMap<std::net::IpAddr, Vec<Instant>>>>;
+static AUDIT_LOCK: Mutex<()> = Mutex::new(());
 fn risk_dir() -> PathBuf {
     std::env::var("DERIV_RISK_STATE_DIR")
         .ok()
@@ -120,22 +121,45 @@ fn rate_allowed(attempts: &Attempts, peer: std::net::IpAddr) -> bool {
     peer_attempts.push(now);
     true
 }
-fn audit(peer: &str, action: &str, accepted: bool) {
+fn retained_audit_body(existing: &str, record: &str, cutoff: u64) -> String {
+    let mut retained: Vec<&str> = existing
+        .lines()
+        .filter(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .and_then(|value| value.get("at_unix")?.as_u64())
+                .is_some_and(|timestamp| timestamp >= cutoff)
+        })
+        .collect();
+    retained.push(record);
+    let mut body = retained.join("\n");
+    body.push('\n');
+    body
+}
+fn audit(peer: &str, action: &str, accepted: bool) -> std::io::Result<()> {
+    let _guard = AUDIT_LOCK.lock().unwrap_or_else(|lock| lock.into_inner());
     let path = risk_dir().join("dashboard-audit.jsonl");
-    let record = format!(
-        r#"{{"at_unix":{},"peer":"{}","action":"{}","accepted":{}}}"#,
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
-        peer.replace('"', ""),
-        action,
-        accepted
-    );
-    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(f, "{record}");
-        let _ = f.sync_data();
-    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let retention = std::env::var("DERIV_DASHBOARD_AUDIT_RETENTION_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(604_800)
+        .clamp(86_400, 2_592_000);
+    let record = serde_json::json!({
+        "at_unix": now,
+        "peer": peer,
+        "action": action,
+        "accepted": accepted
+    })
+    .to_string();
+    let existing = fs::read_to_string(&path).unwrap_or_default();
+    atomic(
+        &path,
+        retained_audit_body(&existing, &record, now.saturating_sub(retention)).as_bytes(),
+    )
 }
 fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
     let peer = s
@@ -207,7 +231,7 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
                 .map(|value| value.ip())
                 .unwrap_or(std::net::IpAddr::from([0, 0, 0, 0]));
             if !rate_allowed(attempts, peer_ip) {
-                audit(&peer, "emergency_stop", false);
+                audit(&peer, "emergency_stop", false)?;
                 return json(
                     &mut s,
                     "429 Too Many Requests",
@@ -215,7 +239,7 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
                 );
             }
             if !authorized(&request) {
-                audit(&peer, "emergency_stop", false);
+                audit(&peer, "emergency_stop", false)?;
                 return json(
                     &mut s,
                     "401 Unauthorized",
@@ -228,7 +252,7 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
                 &risk_dir().join("stop-state.json"),
                 format!(r#"{{"stopped":true,"reason":"{}"}}"#, reason).as_bytes(),
             )?;
-            audit(&peer, "emergency_stop", true);
+            audit(&peer, "emergency_stop", true)?;
             json(&mut s, "202 Accepted", r#"{"stopped":true}"#)
         }
         _ => json(&mut s, "404 Not Found", r#"{"error":"not_found"}"#),
@@ -283,6 +307,21 @@ mod tests {
         }
         assert!(!rate_allowed(&attempts, first));
         assert!(rate_allowed(&attempts, second));
+    }
+    #[test]
+    fn audit_retention_drops_expired_and_malformed_records() {
+        let existing = concat!(
+            "{\"at_unix\":99,\"accepted\":false}\n",
+            "malformed\n",
+            "{\"at_unix\":100,\"accepted\":true}\n",
+            "{\"at_unix\":101,\"accepted\":false}\n"
+        );
+        let current = "{\"at_unix\":102,\"accepted\":true}";
+        let body = retained_audit_body(existing, current, 100);
+        assert!(!body.contains("malformed"));
+        assert!(!body.contains("\"at_unix\":99"));
+        assert!(body.contains("\"at_unix\":100"));
+        assert!(body.ends_with("{\"at_unix\":102,\"accepted\":true}\n"));
     }
     #[test]
     fn csp_forbids_inline_exceptions() {
