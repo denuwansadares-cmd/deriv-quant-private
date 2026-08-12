@@ -115,6 +115,18 @@ impl QualificationGate {
         self.qualified.iter().filter(|qualified| **qualified).count()
     }
 
+    fn research_consensus(scores: &[f64; 8]) -> QualifiedConsensus {
+        // Demo-only research path: all eight implemented models contribute, but
+        // this does not promote them through the production qualification gate.
+        let signals = MODEL_NAMES.iter().zip(scores.iter()).map(|(name, score)| {
+            ModelSignal::Qualified { name, score: *score }
+        }).collect::<Vec<_>>();
+        let total_weight = STRATEGY_WEIGHTS.iter().sum::<f64>();
+        let consensus = scores.iter().zip(STRATEGY_WEIGHTS).map(|(score, weight)| score * weight).sum::<f64>() / total_weight;
+        let variance = scores.iter().zip(STRATEGY_WEIGHTS).map(|(score, weight)| weight * (score - consensus).powi(2)).sum::<f64>() / total_weight;
+        QualifiedConsensus { score: consensus, confidence: (1.0 - variance.sqrt() * 2.4).clamp(0.0, 1.0), signals }
+    }
+
     fn consensus(&self, scores: &[f64; 8]) -> Option<QualifiedConsensus> {
         let signals = (0..MODEL_NAMES.len()).map(|index| {
             if self.qualified[index] {

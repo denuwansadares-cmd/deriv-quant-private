@@ -1,4 +1,6 @@
 # Credentials and local configuration
+.dashboard-admin-password
+.dashboard.env
 .env
 .env.*
 !.env.example
@@ -24,7 +26,7 @@ data/provenance/private/
 data/history/
 *.csv
 
-# Python/tool caches
+# Tool caches
 __pycache__/
 *.pyc
 

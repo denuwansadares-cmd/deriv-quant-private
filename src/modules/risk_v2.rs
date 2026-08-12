@@ -3,6 +3,14 @@ const STOP_STATE_NAME: &str = "stop-state.json";
 const MANUAL_STOP_NAME: &str = "emergency.stop";
 const HEARTBEAT_NAME: &str = "runtime-heartbeat";
 const LOCK_NAME: &str = "runtime.lock";
+const EXPOSURE_STATE_NAME: &str = "open-exposure.json";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PersistedExposureState {
+    review_locked: bool,
+    updated_at_ms: i64,
+    contracts: BTreeMap<String, i64>,
+}
 
 fn risk_state_dir() -> PathBuf {
     env::var("DERIV_RISK_STATE_DIR")
@@ -120,6 +128,21 @@ fn init_risk_state(risk: Arc<RwLock<RiskManager>>) -> Result<RuntimeLockGuard> {
     let stop_path = risk_path(STOP_STATE_NAME);
     let manual = risk_path(MANUAL_STOP_NAME).exists();
     let mut stop_reason = None;
+    let exposure_path = risk_path(EXPOSURE_STATE_NAME);
+    if exposure_path.exists() {
+        match fs::read_to_string(&exposure_path).ok()
+            .and_then(|value| serde_json::from_str::<PersistedExposureState>(&value).ok())
+        {
+            Some(state) if !state.contracts.is_empty() => {
+                risk.write().safety_open_contracts.extend(
+                    state.contracts.into_iter().map(|(id, minor)| (id, Money(minor))),
+                );
+                stop_reason = Some("persisted exposure requires portfolio reconciliation".to_string());
+            }
+            Some(_) => { let _ = fs::remove_file(&exposure_path); }
+            None => stop_reason = Some("corrupt exposure state recovered fail-closed".to_string()),
+        }
+    }
     if stop_path.exists() {
         let valid = fs::read_to_string(&stop_path).ok()
             .and_then(|value| serde_json::from_str::<serde_json::Value>(&value).ok())
@@ -132,6 +155,42 @@ fn init_risk_state(risk: Arc<RwLock<RiskManager>>) -> Result<RuntimeLockGuard> {
         persist_risk_stop(&reason);
     }
     Ok(runtime_lock)
+}
+
+fn persist_open_exposure() {
+    let Some(risk) = AUTHORITATIVE_RISK.get() else { return };
+    let contracts = risk.read().safety_open_contracts.iter()
+        .map(|(id, money)| (id.clone(), money.0))
+        .collect::<BTreeMap<_, _>>();
+    let path = risk_path(EXPOSURE_STATE_NAME);
+    if contracts.is_empty() {
+        if let Err(error) = fs::remove_file(&path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                mark_persistence_failure("exposure-state removal", &error);
+            }
+        }
+        return;
+    }
+    let body = serde_json::to_vec(&PersistedExposureState {
+        review_locked: true,
+        updated_at_ms: Utc::now().timestamp_millis(),
+        contracts,
+    }).expect("exposure state serialization is infallible");
+    if let Err(error) = atomic_secure_write(&path, &body) {
+        mark_persistence_failure("exposure-state write", &error);
+    }
+}
+
+fn risk_v2_open_contract_ids() -> Vec<String> {
+    AUTHORITATIVE_RISK.get().map_or_else(Vec::new, |risk| {
+        risk.read().safety_open_contracts.keys().cloned().collect()
+    })
+}
+
+fn risk_manager_cost(contract_id: &str) -> Option<f64> {
+    AUTHORITATIVE_RISK.get()
+        .and_then(|risk| risk.read().safety_open_contracts.get(contract_id).copied())
+        .map(Money::api_amount)
 }
 
 fn mark_persistence_failure(context: &str, error: &std::io::Error) {
@@ -212,9 +271,9 @@ fn risk_v2_pre_trade(command: &ApiCommand) -> std::result::Result<(), String> {
         | ApiCommand::RequestMatchesDiff { amount, .. }
         | ApiCommand::RequestRiseFall { amount, .. } => {
             let stake = Money::from_api(*amount).ok_or_else(|| "invalid stake".to_string())?;
-            let expected_loss_limit = (risk.verified_balance.0 / 100).max(MIN_STAKE_MINOR);
             let market_budget = (risk.verified_balance.0 * risk.runtime_config.max_open_exposure_bps / 10_000).max(MIN_STAKE_MINOR);
-            let family_budget = (risk.verified_balance.0 * 5 / 100).max(MIN_STAKE_MINOR);
+            let expected_loss_limit = market_budget;
+            let family_budget = market_budget;
             let maximum_exposure = market_budget;
             if stake.0 > risk.runtime_config.max_stake_minor { return Err("hard stake ceiling".into()); }
             if stake.0 > expected_loss_limit { return Err("expected-loss ceiling".into()); }
@@ -251,15 +310,26 @@ fn risk_v2_contract_opened(contract_id: &str, cost: f64) {
             risk.engage_stop("open-contract cardinality invariant failed");
         }
         risk.safety_open_contracts.insert(contract_id.to_string(), cost);
+        drop(risk);
+        persist_open_exposure();
     }
 }
 fn risk_v2_contract_closed(contract_id: &str, pnl: f64) {
     if let Some(risk) = AUTHORITATIVE_RISK.get() {
         let mut risk = risk.write();
         risk.safety_open_contracts.remove(contract_id);
-        if pnl < 0.0 && risk.consecutive_losses >= 3 {
-            risk.safety_loss_throttle_until_ms = Utc::now().timestamp_millis() + 60_000;
+        if pnl < 0.0 {
+            let exponent = risk.consecutive_losses.saturating_sub(1).min(5);
+            let cooldown_secs = risk
+                .runtime_config
+                .loss_cooldown_base_secs
+                .saturating_mul(1u64 << exponent)
+                .min(3_600);
+            risk.safety_loss_throttle_until_ms = Utc::now().timestamp_millis()
+                + i64::try_from(cooldown_secs).unwrap_or(3_600) * 1_000;
         }
+        drop(risk);
+        persist_open_exposure();
     }
 }
 fn risk_v2_post_trade_invariants() {

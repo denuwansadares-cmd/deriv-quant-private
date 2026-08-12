@@ -385,7 +385,7 @@ fn stake_policy_uses_its_balance_derived_cap_and_signal_risk() {
     assert_eq!(stake_for_signal_risk(5.0, 0.0), 5.0);
     assert_eq!(stake_for_signal_risk(5.0, 0.5), 3.0);
     assert_eq!(stake_for_signal_risk(5.0, 1.0), 1.0);
-    assert_eq!(stake_for_signal_risk(1_000.0, 0.0), 10.0);
+    assert_eq!(stake_for_signal_risk(1_000.0, 0.0), 100.0);
     assert_eq!(deriv_stake(1.005), 1.0);
     assert_eq!(deriv_stake(1.006), 1.01);
 }
@@ -459,7 +459,7 @@ fn every_implemented_contract_family_has_a_command_shape() {
                 currency: "USD".into(),
                 amount: 0.50,
                 contract_type: "CALL".into(),
-                duration_ticks: RISE_FALL_DURATION_TICKS,
+                duration_minutes: DEFAULT_RISE_FALL_DURATION_MINUTES,
             },
         ),
     ];
@@ -478,10 +478,10 @@ fn every_implemented_contract_family_has_a_command_shape() {
     assert_eq!(ContractType::MatchesDiff.to_string(), "MATCHES_DIFF");
     assert_eq!(ContractType::RiseFall.to_string(), "RISE_FALL");
     const {
-        assert!(!ENABLE_RANDOM_CONTRACT_FAMILIES);
+        assert!(ENABLE_RANDOM_CONTRACT_FAMILIES);
     }
     const {
-        assert!(!ENABLE_RISE_FALL);
+        assert!(ENABLE_RISE_FALL);
     }
 
     for (_, command) in commands {
@@ -512,15 +512,31 @@ fn every_implemented_contract_family_has_a_command_shape() {
             }
             ApiCommand::RequestRiseFall {
                 contract_type,
-                duration_ticks,
+                duration_minutes,
                 ..
             } => {
                 assert_eq!(contract_type, "CALL");
-                assert_eq!(duration_ticks, RISE_FALL_DURATION_TICKS);
+                assert_eq!(duration_minutes, DEFAULT_RISE_FALL_DURATION_MINUTES);
             }
             _ => unreachable!("unexpected family command"),
         }
     }
+}
+
+#[tokio::test]
+async fn sell_errors_preserve_contract_context() {
+    let (tx, mut rx) = broadcast::channel(2);
+    handle_ws_message(
+        r#"{"msg_type":"sell","error":{"code":"InvalidtoSell","message":"wait"},"echo_req":{"sell":"42","passthrough":{"kind":"sell","contract_id":"42"}}}"#,
+        &tx,
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        rx.recv().await.unwrap(),
+        ApiEvent::Error { code, request_kind: Some(kind), request_contract_id: Some(contract_id), .. }
+            if code == "InvalidtoSell" && kind == "sell" && contract_id == "42"
+    ));
 }
 
 #[tokio::test]

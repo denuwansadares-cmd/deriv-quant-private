@@ -1,5 +1,7 @@
 # Buyer onboarding
 
+සිංහලෙන් සම්පූර්ණ setup walkthrough එක සඳහා [`BUYER_FULL_SETUP_SI.md`](BUYER_FULL_SETUP_SI.md) බලන්න.
+
 The buyer must use its own Deriv application registration and credentials. Seller credentials, OTPs, account identifiers, rate-limit allocations, and contractual permissions are not transferable assets.
 
 ## Supported authentication boundary
@@ -7,7 +9,7 @@ The buyer must use its own Deriv application registration and credentials. Selle
 This build uses the current Options API sequence:
 
 1. Use the buyer-owned application ID and OAuth or PAT bearer access token with the REST Options accounts endpoint.
-2. Select a demo options account. This build rejects live mode.
+2. Select a demo account for evaluation. Guarded live mode selects a non-demo account only after the live feature, buyer-owned credentials, saved risk limits, explicit warning acknowledgement, typed `LIVE` confirmation and exact runtime gate all pass.
 3. Request a one-time WebSocket URL for that account through the REST OTP endpoint.
 4. Open the returned WebSocket URL immediately. Deriv documents the OTP as single-use and valid for 120 seconds.
 5. On reconnect, request a fresh OTP; never persist or reuse the previous OTP URL.
@@ -25,7 +27,7 @@ Official references:
 1. Create the buyer's own Deriv application using the authentication method appropriate to the deployment. Configure redirect URLs and scopes in the buyer's account; do not reuse the seller's registration.
 2. Obtain a buyer-owned OAuth access token or PAT with only the scopes required for the demo options workflow. Token acquisition and refresh happen outside this CLI; this repository does not contain an OAuth callback server.
 3. Copy `.env.example` to `.env` locally and set `DERIV_APP_ID` and `DERIV_ACCESS_TOKEN`. The legacy `DERIV_PAT`/`DERIV_PAT_TOKEN` names remain accepted for compatibility.
-4. Keep `DERIV_MODE=demo`. Do not put credentials in command-line arguments, source files, logs, support messages, or buyer deliverables.
+4. Keep `DERIV_MODE=demo` throughout acceptance testing. Live operation is a separate buyer decision after technical, security, legal and risk review. Never put credentials in source, command lines, logs, support messages or buyer deliverables.
 5. Leave `HISTORY_PATH` empty unless the buyer has a documented licence for that dataset and its intended use.
 6. Keep application-managed API records under `DERIV_API_RECORDS_DIR`. Files there are automatically expired after 24 hours on each startup.
 7. Run `cargo test`, then `cargo run -- --mode demo`.

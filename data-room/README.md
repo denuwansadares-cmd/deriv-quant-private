@@ -4,7 +4,7 @@ Generated for technical and commercial due diligence. This package is source-and
 
 ## Executive summary
 
-The asset is a Rust trading research/safety platform with a deterministic simulator, shared broker/strategy boundaries, fail-closed model qualification, fixed-point money handling, append-only decision metadata, guarded risk engine, demo dashboard/API, watchdog, and extensive automated characterization tests. Demo is the operational default. Real-money support is compile-time and runtime gated and is not represented as production approved or profitable.
+The asset is a Rust trading research/safety platform with a deterministic simulator, shared broker/strategy boundaries, fail-closed model qualification, fixed-point money handling, append-only decision metadata, guarded risk engine, authenticated demo/live control plane, independent watchdog, and extensive automated characterization tests. Demo is the operational default. Real-money support is compile-time, runtime, state and explicit-acknowledgement gated and is not represented as production approved or profitable.
 
 The highest current value is reproducible engineering, risk controls, failure recovery, and buyer-verifiable sourcenot proven trading alpha.
 
@@ -20,7 +20,7 @@ The highest current value is reproducible engineering, risk controls, failure re
 - `../evidence/`: tests, SBOM, licences, audit and build evidence.
 - `../legal/`: draft IP documents and compliance memo.
 - `../media/`: screenshot/video status.
-- `../scripts/buyer-evaluate.sh`: buyer-run verification.
+- `deriv_ops buyer-evaluate`: buyer-run verification.
 
 ## Transaction blockers
 

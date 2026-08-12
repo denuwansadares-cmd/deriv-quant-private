@@ -211,6 +211,66 @@ impl RiskManager {
 
     fn evaluate(&mut self) {
         let session_loss_reached = self.session_pnl <= -self.session_loss_limit().api_amount();
+        let session_profit_reached = Money::from_api(self.session_pnl)
+            .is_some_and(|profit| profit.0 >= SESSION_PROFIT_TARGET_MINOR);
+        if self.mode != TradingMode::Stopped && session_profit_reached {
+            log::info!(
+                "Session profit target reached: P&L=${:.4}. Stopping new {} entries.",
+                self.session_pnl,
+                self.mode
+            );
+            journal_event("session_profit_target", serde_json::json!({
+                "session_pnl_minor": Money::from_api(self.session_pnl).map(|money| money.0),
+                "target_minor": SESSION_PROFIT_TARGET_MINOR,
+            }));
+            self.engage_stop("session profit target reached");
+        }
+        let profit_lock_activation = self.verified_balance.0
+            .saturating_mul(PROFIT_LOCK_ACTIVATION_BPS) / 10_000;
+        let profit_lock_giveback = (self.verified_balance.0
+            .saturating_mul(PROFIT_LOCK_MIN_GIVEBACK_BPS) / 10_000)
+            .max(
+                Money::from_api(self.peak_pnl)
+                    .map(|peak| peak.0.saturating_mul(PROFIT_LOCK_PEAK_GIVEBACK_BPS) / 10_000)
+                    .unwrap_or_default(),
+            );
+        let peak_profit_minor = Money::from_api(self.peak_pnl)
+            .map(|peak| peak.0)
+            .unwrap_or_default();
+        let drawdown_minor = Money::from_api((self.peak_pnl - self.session_pnl).max(0.0))
+            .map(|drawdown| drawdown.0)
+            .unwrap_or_default();
+        let profit_lock_reached = peak_profit_minor >= profit_lock_activation
+            && drawdown_minor >= profit_lock_giveback;
+        if self.mode != TradingMode::Stopped && profit_lock_reached {
+            log::error!(
+                "Profit-lock circuit breaker reached: peak=${:.4}, current=${:.4}, giveback=${:.4}. Stopping {} trading.",
+                self.peak_pnl,
+                self.session_pnl,
+                drawdown_minor as f64 / 100.0,
+                self.mode
+            );
+            journal_event("profit_lock", serde_json::json!({
+                "peak_profit_minor": peak_profit_minor,
+                "session_pnl_minor": Money::from_api(self.session_pnl.abs()).map(|money| {
+                    if self.session_pnl < 0.0 { -money.0 } else { money.0 }
+                }),
+                "giveback_minor": drawdown_minor,
+                "allowed_giveback_minor": profit_lock_giveback,
+            }));
+            self.engage_stop("trailing profit-lock circuit breaker");
+        }
+        let consecutive_loss_limit_reached =
+            self.consecutive_losses >= self.runtime_config.max_consecutive_losses;
+        if self.mode != TradingMode::Stopped && consecutive_loss_limit_reached {
+            log::error!(
+                "Consecutive-loss circuit breaker reached: {} losses, P&L=${:.4}. Stopping {} trading.",
+                self.consecutive_losses,
+                self.session_pnl,
+                self.mode
+            );
+            self.engage_stop("consecutive-loss circuit breaker");
+        }
         if self.mode != TradingMode::Stopped && session_loss_reached {
             log::error!(
                 "Hard session loss circuit breaker reached: P&L=${:.4}, consecutive losses=${:.4} across {} trade(s). Stopping {} trading.",

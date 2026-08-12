@@ -193,7 +193,7 @@ fn payout_allows_trade(ask_price: f64, payout: f64, estimated_win_rate: f64) -> 
         return None;
     }
     let required = ask_price / payout;
-    (estimated_win_rate >= required + MIN_PAYOUT_EDGE).then_some(required)
+    (estimated_win_rate >= MIN_ENTRY_WIN_RATE).then_some(required)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -202,6 +202,13 @@ enum ContractType {
     RiseFall,
     OverUnder,
     MatchesDiff,
+}
+
+fn uses_digit_fast_path(contract_type: ContractType) -> bool {
+    matches!(
+        contract_type,
+        ContractType::OverUnder | ContractType::MatchesDiff
+    )
 }
 
 impl fmt::Display for ContractType {
@@ -250,7 +257,7 @@ impl ContractTypeRotator {
             penalty: HashMap::new(),
         }
     }
-    fn weights(&self) -> [f64; 3] {
+    fn weights(&self) -> [f64; 4] {
         let w = |t, base| {
             if self.penalty.get(&t).copied().unwrap_or(0) > 0 {
                 base * (1.0 - LOSS_WEIGHT_REDUCTION)
@@ -262,28 +269,41 @@ impl ContractTypeRotator {
             w(ContractType::Accumulator, TYPE_WEIGHT_ACCU),
             w(ContractType::OverUnder, TYPE_WEIGHT_OU),
             w(ContractType::MatchesDiff, TYPE_WEIGHT_MD),
+            w(ContractType::RiseFall, TYPE_WEIGHT_RF),
         ]
     }
-    fn next_type(&mut self) -> (ContractType, &'static str) {
+    fn next_type(&mut self, advanced_families_active: bool) -> (ContractType, &'static str) {
         let mut weights = self.weights();
+        if !advanced_families_active {
+            weights[2] = 0.0;
+            weights[3] = 0.0;
+        }
         let exploration = self.consecutive_same >= MAX_CONSECUTIVE_SAME_TYPE;
         if exploration {
             if let Some(last) = self.last_type {
                 weights[match last {
                     ContractType::Accumulator => 0,
-                    ContractType::RiseFall => 0,
                     ContractType::OverUnder => 1,
                     ContractType::MatchesDiff => 2,
+                    ContractType::RiseFall => 3,
                 }] = 0.10;
             }
         }
-        let roll = random_unit() * weights.iter().sum::<f64>();
-        let selected = if roll < weights[0] {
-            ContractType::Accumulator
-        } else if roll < weights[0] + weights[1] {
-            ContractType::OverUnder
-        } else {
-            ContractType::MatchesDiff
+        let selected_index = weights
+            .iter()
+            .enumerate()
+            .max_by(|(left_index, left_weight), (right_index, right_weight)| {
+                left_weight
+                    .total_cmp(right_weight)
+                    .then_with(|| right_index.cmp(left_index))
+            })
+            .map(|(index, _)| index)
+            .unwrap_or(0);
+        let selected = match selected_index {
+            0 => ContractType::Accumulator,
+            1 => ContractType::OverUnder,
+            2 => ContractType::MatchesDiff,
+            _ => ContractType::RiseFall,
         };
         if self.last_type == Some(selected) {
             self.consecutive_same += 1;
@@ -299,7 +319,7 @@ impl ContractTypeRotator {
             if exploration {
                 "exploration_constraint"
             } else {
-                "weighted_random"
+                "highest_weight"
             },
         )
     }
@@ -320,11 +340,13 @@ struct PendingBuyInfo {
 fn random_unit() -> f64 {
     OsRng.next_u64() as f64 / u64::MAX as f64
 }
-fn random_contract_type() -> ContractType {
-    match OsRng.next_u64() % 3 {
+fn random_contract_type(advanced_families_active: bool) -> ContractType {
+    let family_count = if advanced_families_active { 4 } else { 2 };
+    match OsRng.next_u64() % family_count {
         0 => ContractType::Accumulator,
         1 => ContractType::OverUnder,
-        _ => ContractType::MatchesDiff,
+        2 => ContractType::MatchesDiff,
+        _ => ContractType::RiseFall,
     }
 }
 #[cfg(test)]

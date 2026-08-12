@@ -167,6 +167,16 @@ fn load_csv_file(
     Ok(buffer.len())
 }
 
+/// Append a live tick to the operator-owned CSV history without affecting strategy state.
+fn append_history_tick(history_path: &str, tick: &Tick) -> std::io::Result<()> {
+    let base = expand_tilde(history_path);
+    std::fs::create_dir_all(&base)?;
+    let path = base.join(format!("{}.csv", tick.symbol));
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path)?;
+    writeln!(file, "{},{:.17},{:.17},{:.17},{}", tick.epoch, tick.quote, tick.ask, tick.bid, tick.pip_size)?;
+    file.flush()
+}
+
 fn expand_tilde(path: &str) -> PathBuf {
     if path.starts_with("~/") || path == "~" {
         let home = env::var("USERPROFILE")
@@ -296,9 +306,8 @@ struct MarketPerformance {
 
 struct IndexRotator {
     indices: Vec<String>,
-    history: VecDeque<String>,
+    next_cursor: usize,
     performance: HashMap<String, MarketPerformance>,
-    selection_counts: HashMap<String, u64>,
 }
 
 impl IndexRotator {
@@ -321,30 +330,9 @@ impl IndexRotator {
             .collect();
         Self {
             indices,
-            history: VecDeque::with_capacity(16),
+            next_cursor: 0,
             performance,
-            selection_counts: HashMap::new(),
         }
-    }
-
-    #[cfg_attr(not(test), allow(dead_code))]
-    fn best_historical_market(
-        &self,
-        loader: &HistoryLoader,
-        now_epoch: u64,
-    ) -> Option<HistoricalMarketScore> {
-        self.indices
-            .iter()
-            .filter(|symbol| self.market_available(symbol))
-            .filter_map(|symbol| {
-                let ticks: Vec<Tick> = loader.get_buffer(symbol)?.iter().cloned().collect();
-                historical_market_score(symbol, &ticks, now_epoch)
-            })
-            .max_by(|left, right| {
-                left.score
-                    .partial_cmp(&right.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
     }
 
     fn ranked_historical_markets(
@@ -352,8 +340,7 @@ impl IndexRotator {
         loader: &HistoryLoader,
         now_epoch: u64,
     ) -> Vec<HistoricalMarketScore> {
-        let mut ranked: Vec<_> = self
-            .indices
+        let mut ranked: Vec<_> = self.indices
             .iter()
             .filter(|symbol| self.market_available(symbol))
             .filter_map(|symbol| {
@@ -362,13 +349,16 @@ impl IndexRotator {
             })
             .collect();
         ranked.sort_by(|left, right| {
-            right
-                .score
-                .partial_cmp(&left.score)
+            right.score.partial_cmp(&left.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| left.symbol.cmp(&right.symbol))
         });
         ranked
+    }
+
+    #[cfg(test)]
+    fn best_historical_market(&self, loader: &HistoryLoader, now_epoch: u64) -> Option<HistoricalMarketScore> {
+        self.ranked_historical_markets(loader, now_epoch).into_iter().next()
     }
 
     fn market_available(&self, symbol: &str) -> bool {
@@ -380,75 +370,38 @@ impl IndexRotator {
 
     fn next_index(&mut self) -> String {
         let now_ms = Utc::now().timestamp_millis();
-        let mut candidates: Vec<String> = self
-            .indices
-            .iter()
-            .filter(|symbol| {
-                self.performance
-                    .get(*symbol)
-                    .is_none_or(|stats| stats.cooldown_until_ms <= now_ms)
-            })
-            .cloned()
-            .collect();
+        assert!(
+            !self.indices.is_empty(),
+            "at least one market must be configured"
+        );
 
-        // Rotate after every completed trade when another eligible market exists.
-        // Avoid an immediate re-selection of the market just traded while every
-        // other eligible configured market keeps an equal random chance.
-        if candidates.len() > 1 {
-            if let Some(previous) = self.history.back() {
-                candidates.retain(|symbol| symbol != previous);
+        // Strict configured-order round robin. Each call advances the cursor,
+        // so after the last index the next scan starts again at index one.
+        // Markets in a risk cooldown are skipped without disturbing the order.
+        for offset in 0..self.indices.len() {
+            let index = (self.next_cursor + offset) % self.indices.len();
+            let symbol = &self.indices[index];
+            let available = self
+                .performance
+                .get(symbol)
+                .is_none_or(|stats| stats.cooldown_until_ms <= now_ms);
+            if available {
+                self.next_cursor = (index + 1) % self.indices.len();
+                return symbol.clone();
             }
         }
 
-        if candidates.is_empty() {
-            candidates = self
-                .indices
-                .iter()
-                .filter(|symbol| {
-                    self.performance
-                        .get(*symbol)
-                        .is_none_or(|stats| stats.cooldown_until_ms <= now_ms)
-                })
-                .cloned()
-                .collect();
-        }
-
-        if candidates.is_empty() {
-            let chosen = self
-                .indices
-                .iter()
-                .min_by_key(|symbol| {
-                    self.performance
-                        .get(*symbol)
-                        .map_or(0, |stats| stats.cooldown_until_ms)
-                })
-                .expect("at least one market must be configured")
-                .clone();
-            log::warn!("[Market] All markets cooling down; waiting for {}", chosen);
-            return chosen;
-        }
-
-        // Choose among the least-used eligible markets. Randomness breaks ties,
-        // while the usage count guarantees balanced coverage of every configured
-        // market instead of repeatedly sampling a lucky subset.
-        let minimum_selections = candidates
+        let chosen = self
+            .indices
             .iter()
-            .map(|symbol| self.selection_counts.get(symbol).copied().unwrap_or(0))
-            .min()
-            .unwrap_or(0);
-        candidates.retain(|symbol| {
-            self.selection_counts.get(symbol).copied().unwrap_or(0) == minimum_selections
-        });
-        let chosen = candidates
-            .choose(&mut OsRng)
-            .expect("eligible market list cannot be empty")
+            .min_by_key(|symbol| {
+                self.performance
+                    .get(*symbol)
+                    .map_or(0, |stats| stats.cooldown_until_ms)
+            })
+            .expect("at least one market must be configured")
             .clone();
-
-        if self.history.len() >= 16 {
-            self.history.pop_front();
-        }
-        self.history.push_back(chosen.clone());
-        *self.selection_counts.entry(chosen.clone()).or_insert(0) += 1;
+        log::warn!("[Market] All markets cooling down; waiting for {}", chosen);
         chosen
     }
 
@@ -497,4 +450,3 @@ impl IndexRotator {
         }
     }
 }
-

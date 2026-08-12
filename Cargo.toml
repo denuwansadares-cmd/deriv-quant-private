@@ -4,6 +4,7 @@ version = "1.0.0"
 edition = "2021"
 description = "Deriv Accumulate Auto-Trading Bot"
 autobins = false
+default-run = "deriv_bot"
 
 [[bin]]
 name = "deriv_bot"
@@ -20,6 +21,18 @@ path = "src/bin/platform.rs"
 [[bin]]
 name = "generate_synthetic_fixture"
 path = "src/bin/generate_synthetic_fixture.rs"
+
+[[bin]]
+name = "deriv_supervisor"
+path = "src/bin/supervisor.rs"
+
+[[bin]]
+name = "deriv_ops"
+path = "src/bin/ops.rs"
+
+[[bin]]
+name = "deriv_history"
+path = "src/bin/history_audit.rs"
 
 [profile.release]
 strip = true

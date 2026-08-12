@@ -4,7 +4,7 @@
 |---|---|
 | Clean source snapshot | generated and extracted evaluation passed |
 | Locked Cargo dependencies | present |
-| Test/reliability evidence | 75 passed, 0 failed, 1 external-data test ignored |
+| Test/reliability evidence | 98 passed, 0 failed, 0 ignored; verified 2026-08-10 |
 | Qualification representation | explicit Qualified/NotQualified; excluded from consensus |
 | Fuzz stress | 10,000-case in-process parser test; continuous fuzz corpus absent |
 | Duplicate-buy proof model | 10,000 seeded scenarios passed |

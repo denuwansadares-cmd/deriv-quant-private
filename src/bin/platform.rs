@@ -68,6 +68,19 @@ fn header<'a>(request: &'a str, name: &str) -> Option<&'a str> {
         (k.eq_ignore_ascii_case(name)).then(|| v.trim())
     })
 }
+fn fresh_heartbeat() -> bool {
+    fs::metadata(risk_dir().join("runtime-heartbeat"))
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_some_and(|age| age < Duration::from_secs(20))
+}
+fn validated_header_i64(request: &str, name: &str, min: i64, max: i64) -> Option<i64> {
+    header(request, name)?
+        .parse::<i64>()
+        .ok()
+        .filter(|v| (min..=max).contains(v))
+}
 fn constant_time_eq(a: &str, b: &str) -> bool {
     let mut diff = a.len() ^ b.len();
     for index in 0..a.len().max(b.len()) {
@@ -161,6 +174,342 @@ fn audit(peer: &str, action: &str, accepted: bool) -> std::io::Result<()> {
         retained_audit_body(&existing, &record, now.saturating_sub(retention)).as_bytes(),
     )
 }
+fn journal_path() -> PathBuf {
+    std::env::var("DERIV_AUDIT_JOURNAL_DIR")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("data/audit"))
+        .join("decision-journal.jsonl")
+}
+
+fn exposure_pending() -> bool {
+    fs::read_to_string(risk_dir().join("open-exposure.json"))
+        .ok()
+        .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+        .and_then(|value| {
+            value
+                .get("contracts")
+                .and_then(serde_json::Value::as_object)
+                .map(|items| !items.is_empty())
+        })
+        .unwrap_or(false)
+}
+
+fn dashboard_telemetry() -> serde_json::Value {
+    let path = journal_path();
+    let Ok(body) = fs::read_to_string(path) else {
+        return serde_json::json!({"running": false, "available": false, "trades": 0, "wins": 0, "losses": 0, "session_pnl_minor": 0, "recent": [], "signals": []});
+    };
+    let heartbeat_fresh = fs::metadata(risk_dir().join("runtime-heartbeat"))
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_some_and(|age| age <= Duration::from_secs(15));
+    let mut mode = "unknown".to_string();
+    let mut state = "Idle".to_string();
+    let mut started_at_ms = 0_u64;
+    let mut last_event_at_ms = 0_u64;
+    let mut trades = 0_u64;
+    let mut wins = 0_u64;
+    let mut losses = 0_u64;
+    let mut session_pnl_minor = 0_i64;
+    let mut drawdown_minor = 0_i64;
+    let mut next_stake_minor = 0_i64;
+    let mut open_contract: Option<String> = None;
+    let mut recent = Vec::new();
+    let mut signals = Vec::new();
+    let mut rise_fall_activation_at_ms: Option<u64> = None;
+    for line in body.lines() {
+        let Ok(record) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let kind = record
+            .get("kind")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let at = record
+            .get("recorded_at_ms")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        let details = record
+            .get("details")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        if kind == "run_started" {
+            mode = details
+                .get("mode")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            state = "Starting".to_string();
+            started_at_ms = at;
+            trades = 0;
+            wins = 0;
+            losses = 0;
+            session_pnl_minor = 0;
+            drawdown_minor = 0;
+            next_stake_minor = 0;
+            open_contract = None;
+            recent.clear();
+            signals.clear();
+            rise_fall_activation_at_ms = None;
+        }
+        if started_at_ms == 0 {
+            continue;
+        }
+        last_event_at_ms = last_event_at_ms.max(at);
+        if kind == "rise_fall_activation_scheduled" {
+            rise_fall_activation_at_ms = details
+                .get("delay_secs")
+                .and_then(serde_json::Value::as_u64)
+                .map(|delay| at.saturating_add(delay.saturating_mul(1_000)));
+        }
+        match kind {
+            "state_transition" => {
+                if details.get("accepted").and_then(serde_json::Value::as_bool) == Some(true) {
+                    state = details
+                        .get("to")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or(&state)
+                        .to_string();
+                }
+            }
+            "contract_strategy_decision" | "strategy_decision" => {
+                let stage = if details.get("decision").and_then(serde_json::Value::as_str)
+                    == Some("reject")
+                {
+                    "rejected_neutral"
+                } else {
+                    "analysed"
+                };
+                signals.push(serde_json::json!({"at_ms": at, "kind": kind, "stage": stage, "details": details}));
+                if signals.len() > 40 {
+                    signals.remove(0);
+                }
+            }
+            "order_request"
+                if details
+                    .get("request_kind")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("buy") =>
+            {
+                signals.push(serde_json::json!({"at_ms": at, "kind": kind, "stage": "risk_approved", "details": details}));
+                if signals.len() > 40 {
+                    signals.remove(0);
+                }
+            }
+            "order_result" => match details
+                .get("result_kind")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+            {
+                "contract_opened" => {
+                    open_contract = details
+                        .get("normalized_contract_id")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string);
+                    signals.push(serde_json::json!({"at_ms": at, "kind": kind, "stage": "executed", "details": details}));
+                    if signals.len() > 40 {
+                        signals.remove(0);
+                    }
+                }
+                "contract_sold" => open_contract = None,
+                _ => {}
+            },
+            "pnl_calculation" => {
+                let trade_pnl = details
+                    .get("trade_pnl_minor")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(0);
+                trades += 1;
+                if trade_pnl > 0 {
+                    wins += 1
+                } else {
+                    losses += 1
+                }
+                session_pnl_minor = details
+                    .get("session_pnl_minor")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(session_pnl_minor);
+                drawdown_minor = details
+                    .get("drawdown_minor")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(drawdown_minor);
+                next_stake_minor = details
+                    .get("next_stake_minor")
+                    .and_then(serde_json::Value::as_i64)
+                    .unwrap_or(next_stake_minor);
+                recent.push(serde_json::json!({"at_ms": at, "pnl_minor": trade_pnl, "session_pnl_minor": session_pnl_minor}));
+                if recent.len() > 12 {
+                    recent.remove(0);
+                }
+                signals.push(serde_json::json!({"at_ms": at, "kind": kind, "stage": "settled", "details": details}));
+                if signals.len() > 40 {
+                    signals.remove(0);
+                }
+            }
+            "risk_stop" => state = "Stopped".to_string(),
+            _ => {}
+        }
+    }
+    let pending_exposure = exposure_pending();
+    if pending_exposure {
+        state = "Exposure pending / review locked".to_string();
+    }
+    serde_json::json!({
+        "available": started_at_ms > 0,
+        "exposure_pending": pending_exposure,
+        "running": heartbeat_fresh,
+        "mode": mode,
+        "state": state,
+        "started_at_ms": started_at_ms,
+        "last_event_at_ms": last_event_at_ms,
+        "rise_fall_activation_at_ms": rise_fall_activation_at_ms,
+        "trades": trades,
+        "wins": wins,
+        "losses": losses,
+        "win_rate_percent": if trades > 0 { Some(wins as f64 * 100.0 / trades as f64) } else { None },
+        "session_pnl_minor": session_pnl_minor,
+        "drawdown_minor": drawdown_minor,
+        "next_stake_minor": next_stake_minor,
+        "open_contract": open_contract,
+        "recent": recent,
+        "signals": signals
+    })
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+}
+fn money(value: i64) -> String {
+    format!(
+        "USD {}{:.2}",
+        if value < 0 { "-" } else { "" },
+        (value.abs() as f64) / 100.0
+    )
+}
+fn dashboard_html() -> String {
+    let telemetry = dashboard_telemetry();
+    let running = telemetry
+        .get("running")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let stopped = risk_dir().join("emergency.stop").exists()
+        || risk_dir().join("stop-state.json").exists()
+        || exposure_pending();
+    let control = fs::read_to_string(risk_dir().join("control-status.json"))
+        .ok()
+        .and_then(|v| serde_json::from_str::<serde_json::Value>(&v).ok())
+        .and_then(|v| {
+            v.get("state")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "idle".into());
+    let configured = risk_dir().join("configured-stake-minor").exists()
+        && risk_dir().join("configured-loss-limit-bps").exists();
+    let trades = telemetry
+        .get("trades")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let wins = telemetry
+        .get("wins")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let losses = telemetry
+        .get("losses")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let pnl = telemetry
+        .get("session_pnl_minor")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0);
+    let next = telemetry
+        .get("next_stake_minor")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0);
+    let mode = telemetry
+        .get("mode")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown");
+    let replacements = [
+        (
+            "{{PLATFORM}}",
+            if running {
+                "OPERATIONAL".into()
+            } else {
+                "AVAILABLE".into()
+            },
+        ),
+        (
+            "{{CONNECTION}}",
+            if running {
+                "connected".into()
+            } else {
+                "idle".into()
+            },
+        ),
+        ("{{MODE}}", html_escape(mode)),
+        (
+            "{{RISK}}",
+            if stopped {
+                "STOPPED".into()
+            } else {
+                "PROTECTED".into()
+            },
+        ),
+        ("{{CONTROL}}", html_escape(&control)),
+        (
+            "{{SESSION_TITLE}}",
+            if running {
+                "Trading session".into()
+            } else {
+                "Last verified session".into()
+            },
+        ),
+        (
+            "{{BOT_STATE}}",
+            if running {
+                "BOT RUNNING".into()
+            } else {
+                "WAITING".into()
+            },
+        ),
+        ("{{PNL}}", money(pnl)),
+        ("{{TRADES}}", trades.to_string()),
+        ("{{WINS}}", wins.to_string()),
+        ("{{LOSSES}}", losses.to_string()),
+        (
+            "{{WIN_RATE}}",
+            if trades == 0 {
+                "—".into()
+            } else {
+                format!("{:.1}%", wins as f64 * 100.0 / trades as f64)
+            },
+        ),
+        (
+            "{{NEXT_STAKE}}",
+            if next == 0 { "—".into() } else { money(next) },
+        ),
+        (
+            "{{CONFIGURED}}",
+            if configured {
+                "Risk limits saved".into()
+            } else {
+                "Risk limits not configured".into()
+            },
+        ),
+    ];
+    replacements.into_iter().fold(
+        include_str!("../../web/index.html").to_owned(),
+        |body, (key, value)| body.replace(key, &value),
+    )
+}
 fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
     let peer = s
         .peer_addr()
@@ -194,7 +543,7 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
             &mut s,
             "200 OK",
             "text/html; charset=utf-8",
-            include_str!("../../web/index.html"),
+            &dashboard_html(),
         ),
         "GET /style.css HTTP/1.1" => response(
             &mut s,
@@ -202,28 +551,207 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
             "text/css; charset=utf-8",
             include_str!("../../web/style.css"),
         ),
-        "GET /app.js HTTP/1.1" => response(
-            &mut s,
-            "200 OK",
-            "application/javascript; charset=utf-8",
-            include_str!("../../web/app.js"),
-        ),
         "GET /api/v1/status HTTP/1.1" => {
+            let pending_exposure = exposure_pending();
             let stopped = risk_dir().join("emergency.stop").exists()
-                || risk_dir().join("stop-state.json").exists();
+                || risk_dir().join("stop-state.json").exists()
+                || pending_exposure;
             json(
                 &mut s,
                 "200 OK",
                 &format!(
-                    r#"{{"mode":"demo","live_trading":false,"stopped":{stopped},"bind":"{}","claims":"verified-tests-only"}}"#,
+                    r#"{{"mode":"operator-controlled","live_trading":true,"stopped":{stopped},"exposure_pending":{pending_exposure},"bind":"{}","claims":"verified-tests-only"}}"#,
                     bind_address()
                 ),
             )
+        }
+        "GET /api/v1/control/config HTTP/1.1" => {
+            let configured = risk_dir().join("configured-stake-minor").exists()
+                && risk_dir().join("configured-loss-limit-bps").exists();
+            let stake_minor = fs::read_to_string(risk_dir().join("configured-stake-minor"))
+                .ok()
+                .and_then(|value| value.trim().parse::<i64>().ok())
+                .unwrap_or(100);
+            let loss_limit_bps = fs::read_to_string(risk_dir().join("configured-loss-limit-bps"))
+                .ok()
+                .and_then(|value| value.trim().parse::<i64>().ok())
+                .unwrap_or(100);
+            let control_state = fs::read_to_string(risk_dir().join("control-status.json"))
+                .ok()
+                .and_then(|value| serde_json::from_str::<serde_json::Value>(&value).ok())
+                .and_then(|value| {
+                    value
+                        .get("state")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned)
+                })
+                .unwrap_or_else(|| "idle".to_string());
+            let control_state = if exposure_pending() {
+                "exposure_pending_review_locked".to_string()
+            } else {
+                control_state
+            };
+            json(
+                &mut s,
+                "200 OK",
+                &serde_json::json!({
+                    "stake_minor": stake_minor.clamp(100, 10_000),
+                    "loss_limit_bps": loss_limit_bps.clamp(1, 2_000),
+                    "max_open_contracts": 1,
+                    "hard_max_stake_minor": 10_000,
+                    "running": fresh_heartbeat(),
+                "configured": configured,
+                    "control_state": control_state
+                })
+                .to_string(),
+            )
+        }
+        "GET /api/v1/telemetry HTTP/1.1" => {
+            json(&mut s, "200 OK", &dashboard_telemetry().to_string())
         }
         "GET /api/v1/qualifications HTTP/1.1" => {
             let body = fs::read_to_string("config/strategy-qualifications.json")
                 .unwrap_or_else(|_| r#"{"models":[]}"#.into());
             json(&mut s, "200 OK", &body)
+        }
+        "POST /api/v1/control/start-demo HTTP/1.1" => {
+            if !authorized(&request) {
+                audit(&peer, "start_demo", false)?;
+                return json(
+                    &mut s,
+                    "401 Unauthorized",
+                    r#"{"error":"operator_auth_required"}"#,
+                );
+            }
+            if risk_dir().join("emergency.stop").exists()
+                || risk_dir().join("stop-state.json").exists()
+            {
+                audit(&peer, "start_demo", false)?;
+                return json(
+                    &mut s,
+                    "409 Conflict",
+                    r#"{"error":"safety_stop_requires_review"}"#,
+                );
+            }
+            atomic(&risk_dir().join("control-start-demo"), b"start demo")?;
+            audit(&peer, "start_demo", true)?;
+            json(
+                &mut s,
+                "202 Accepted",
+                r#"{"accepted":true,"action":"start_demo"}"#,
+            )
+        }
+        "POST /api/v1/control/configure-risk HTTP/1.1" => {
+            if !authorized(&request) {
+                audit(&peer, "configure_risk", false)?;
+                return json(
+                    &mut s,
+                    "401 Unauthorized",
+                    r#"{"error":"operator_auth_required"}"#,
+                );
+            }
+            if fresh_heartbeat() {
+                audit(&peer, "configure_risk", false)?;
+                return json(
+                    &mut s,
+                    "409 Conflict",
+                    r#"{"error":"stop_trading_before_changing_risk"}"#,
+                );
+            }
+            let Some(stake_minor) = validated_header_i64(&request, "X-Stake-Minor", 100, 10_000)
+            else {
+                return json(
+                    &mut s,
+                    "400 Bad Request",
+                    r#"{"error":"stake_must_be_between_1_and_100_usd"}"#,
+                );
+            };
+            let Some(loss_limit_bps) = validated_header_i64(&request, "X-Loss-Limit-Bps", 1, 2_000)
+            else {
+                return json(
+                    &mut s,
+                    "400 Bad Request",
+                    r#"{"error":"loss_limit_must_be_between_0_01_and_20_percent"}"#,
+                );
+            };
+            atomic(
+                &risk_dir().join("configured-stake-minor"),
+                stake_minor.to_string().as_bytes(),
+            )?;
+            atomic(
+                &risk_dir().join("configured-loss-limit-bps"),
+                loss_limit_bps.to_string().as_bytes(),
+            )?;
+            audit(&peer, "configure_risk", true)?;
+            json(&mut s, "200 OK", &serde_json::json!({"accepted":true,"stake_minor":stake_minor,"loss_limit_bps":loss_limit_bps}).to_string())
+        }
+        "POST /api/v1/control/start-live HTTP/1.1" => {
+            if !authorized(&request) {
+                audit(&peer, "start_live", false)?;
+                return json(
+                    &mut s,
+                    "401 Unauthorized",
+                    r#"{"error":"operator_auth_required"}"#,
+                );
+            }
+            let acknowledged = header(&request, "X-Live-Risk-Acknowledged") == Some("true");
+            let confirmed = header(&request, "X-Live-Confirmation") == Some("LIVE");
+            if !acknowledged || !confirmed {
+                audit(&peer, "start_live", false)?;
+                return json(
+                    &mut s,
+                    "400 Bad Request",
+                    r#"{"error":"live_risk_acknowledgement_and_typed_confirmation_required"}"#,
+                );
+            }
+            if fresh_heartbeat()
+                || risk_dir().join("emergency.stop").exists()
+                || risk_dir().join("stop-state.json").exists()
+            {
+                audit(&peer, "start_live", false)?;
+                return json(
+                    &mut s,
+                    "409 Conflict",
+                    r#"{"error":"trading_active_or_safety_stop_requires_review"}"#,
+                );
+            }
+            if !risk_dir().join("configured-stake-minor").exists()
+                || !risk_dir().join("configured-loss-limit-bps").exists()
+            {
+                return json(
+                    &mut s,
+                    "409 Conflict",
+                    r#"{"error":"configure_risk_before_live_trading"}"#,
+                );
+            }
+            atomic(
+                &risk_dir().join("control-start-live"),
+                b"start live with explicit risk acknowledgement",
+            )?;
+            audit(&peer, "start_live", true)?;
+            json(
+                &mut s,
+                "202 Accepted",
+                r#"{"accepted":true,"action":"start_live"}"#,
+            )
+        }
+        "POST /api/v1/control/stop-trading HTTP/1.1"
+        | "POST /api/v1/control/stop-demo HTTP/1.1" => {
+            if !authorized(&request) {
+                audit(&peer, "stop_demo", false)?;
+                return json(
+                    &mut s,
+                    "401 Unauthorized",
+                    r#"{"error":"operator_auth_required"}"#,
+                );
+            }
+            atomic(&risk_dir().join("control-stop-demo"), b"graceful stop")?;
+            audit(&peer, "stop_demo", true)?;
+            json(
+                &mut s,
+                "202 Accepted",
+                r#"{"accepted":true,"action":"stop_demo"}"#,
+            )
         }
         "POST /api/v1/emergency-stop HTTP/1.1" => {
             let peer_ip = s
@@ -260,7 +788,7 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
 }
 fn main() -> std::io::Result<()> {
     let address = bind_address();
-    println!("Safe demo dashboard started (live trading unavailable)");
+    println!("Trading control dashboard started (live mode requires explicit risk confirmation)");
     let attempts: Attempts = Arc::new(Mutex::new(HashMap::new()));
     let active = Arc::new(Mutex::new(0_usize));
     for stream in TcpListener::bind(address)?.incoming().flatten() {

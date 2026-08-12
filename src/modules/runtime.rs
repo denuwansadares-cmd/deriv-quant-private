@@ -105,11 +105,10 @@ fn get_access_token() -> Option<String> {
 
 fn parse_demo_duration(mode: &str, raw: Option<&str>) -> Result<Option<Duration>> {
     if mode != "demo" { return Ok(None); }
-    let raw = raw.context("DEMO_DURATION_SECS must be set explicitly in demo mode")?;
+    let Some(raw) = raw else { return Ok(None); };
     let seconds = raw.trim().parse::<u64>()
-        .context("DEMO_DURATION_SECS must be a positive integer")?;
-    anyhow::ensure!(seconds > 0, "DEMO_DURATION_SECS must be greater than zero");
-    Ok(Some(Duration::from_secs(seconds)))
+        .context("DEMO_DURATION_SECS must be a non-negative integer")?;
+    Ok((seconds > 0).then(|| Duration::from_secs(seconds)))
 }
 
 fn configured_demo_duration(mode: &str) -> Result<Option<Duration>> {
@@ -129,9 +128,9 @@ mod runtime_duration_tests {
     use super::*;
 
     #[test]
-    fn demo_duration_is_explicit_and_positive() {
-        assert!(parse_demo_duration("demo", None).is_err());
-        assert!(parse_demo_duration("demo", Some("0")).is_err());
+    fn demo_duration_is_optional_for_continuous_operation() {
+        assert_eq!(parse_demo_duration("demo", None).unwrap(), None);
+        assert_eq!(parse_demo_duration("demo", Some("0")).unwrap(), None);
         assert!(parse_demo_duration("demo", Some("invalid")).is_err());
         assert_eq!(parse_demo_duration("demo", Some("259200")).unwrap(), Some(Duration::from_secs(259_200)));
         assert_eq!(parse_demo_duration("simulation", None).unwrap(), None);
@@ -161,14 +160,18 @@ struct RuntimeRiskConfig {
     session_loss_limit_bps: i64,
     max_open_exposure_bps: i64,
     max_open_contracts: usize,
+    max_consecutive_losses: u32,
+    loss_cooldown_base_secs: u64,
 }
 impl RuntimeRiskConfig {
     fn compiled_defaults() -> Self {
         Self {
             max_stake_minor: HARD_MAX_STAKE_MINOR,
             session_loss_limit_bps: SESSION_LOSS_LIMIT_BPS,
-            max_open_exposure_bps: 200,
+            max_open_exposure_bps: BALANCE_RISK_BPS,
             max_open_contracts: 1,
+            max_consecutive_losses: 3,
+            loss_cooldown_base_secs: 60,
         }
     }
     fn parse(mode: &str, value: impl Fn(&str) -> Option<String>) -> Result<Self> {
@@ -181,16 +184,28 @@ impl RuntimeRiskConfig {
             value(name).with_context(|| format!("{name} must be set explicitly"))?
                 .trim().parse().with_context(|| format!("{name} must be an integer"))
         };
+        let parse_u32 = |name: &str| -> Result<u32> {
+            value(name).with_context(|| format!("{name} must be set explicitly"))?
+                .trim().parse().with_context(|| format!("{name} must be an integer"))
+        };
+        let parse_u64 = |name: &str| -> Result<u64> {
+            value(name).with_context(|| format!("{name} must be set explicitly"))?
+                .trim().parse().with_context(|| format!("{name} must be an integer"))
+        };
         let config = Self {
             max_stake_minor: parse_i64("DERIV_MAX_STAKE_MINOR")?,
             session_loss_limit_bps: parse_i64("DERIV_SESSION_LOSS_LIMIT_BPS")?,
             max_open_exposure_bps: parse_i64("DERIV_MAX_OPEN_EXPOSURE_BPS")?,
             max_open_contracts: parse_usize("DERIV_MAX_OPEN_CONTRACTS")?,
+            max_consecutive_losses: parse_u32("DERIV_MAX_CONSECUTIVE_LOSSES")?,
+            loss_cooldown_base_secs: parse_u64("DERIV_LOSS_COOLDOWN_BASE_SECS")?,
         };
         anyhow::ensure!((MIN_STAKE_MINOR..=HARD_MAX_STAKE_MINOR).contains(&config.max_stake_minor), "DERIV_MAX_STAKE_MINOR is outside the reviewed absolute range");
         anyhow::ensure!((1..=SESSION_LOSS_LIMIT_BPS).contains(&config.session_loss_limit_bps), "DERIV_SESSION_LOSS_LIMIT_BPS is outside the reviewed absolute range");
-        anyhow::ensure!((1..=200).contains(&config.max_open_exposure_bps), "DERIV_MAX_OPEN_EXPOSURE_BPS is outside the reviewed absolute range");
+        anyhow::ensure!((1..=BALANCE_RISK_BPS).contains(&config.max_open_exposure_bps), "DERIV_MAX_OPEN_EXPOSURE_BPS is outside the reviewed absolute range");
         anyhow::ensure!(config.max_open_contracts == 1, "DERIV_MAX_OPEN_CONTRACTS must equal 1");
+        anyhow::ensure!((1..=10).contains(&config.max_consecutive_losses), "DERIV_MAX_CONSECUTIVE_LOSSES must be between 1 and 10");
+        anyhow::ensure!((10..=3_600).contains(&config.loss_cooldown_base_secs), "DERIV_LOSS_COOLDOWN_BASE_SECS must be between 10 and 3600");
         Ok(config)
     }
     fn load(mode: &str) -> Result<Self> {
@@ -208,10 +223,13 @@ mod runtime_risk_config_tests {
             "DERIV_SESSION_LOSS_LIMIT_BPS" => "100",
             "DERIV_MAX_OPEN_EXPOSURE_BPS" => "100",
             "DERIV_MAX_OPEN_CONTRACTS" => "1",
+            "DERIV_MAX_CONSECUTIVE_LOSSES" => "3",
+            "DERIV_LOSS_COOLDOWN_BASE_SECS" => "60",
             _ => return None,
         }.to_string())).unwrap();
         assert_eq!(config.max_stake_minor, MIN_STAKE_MINOR);
         assert_eq!(config.max_open_contracts, 1);
+        assert_eq!(config.max_consecutive_losses, 3);
     }
     #[test]
     fn missing_or_multi_contract_config_fails_closed() {

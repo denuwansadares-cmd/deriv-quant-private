@@ -18,7 +18,7 @@
 //   DERIV_ENABLE_LIVE_TRADING=I_UNDERSTAND_REAL_MONEY cargo run --features live-trading -- --mode live
 // ===========================================================================
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::env;
 use std::fmt;
 use std::fs;
@@ -32,7 +32,6 @@ use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::RwLock;
 use rand::rngs::OsRng;
-use rand::seq::SliceRandom;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
@@ -81,6 +80,52 @@ async fn join_runtime_tasks(
     .await
     .context("runtime tasks did not join before shutdown timeout")??;
     Ok(())
+}
+
+async fn wait_for_exposure_drain(
+    risk: &Arc<RwLock<RiskManager>>,
+    executor_open_contracts: &Arc<RwLock<HashSet<String>>>,
+    command_tx: &BrokerCommandSender,
+    timeout_duration: Duration,
+) -> bool {
+    let deadline = Instant::now() + timeout_duration;
+    let mut retry = interval(Duration::from_secs(2));
+    let mut waiting_logged = false;
+    loop {
+        let risk_ids: Vec<String> = risk.read().safety_open_contracts.keys().cloned().collect();
+        let executor_count = executor_open_contracts.read().len();
+        if risk_ids.is_empty() && executor_count == 0 {
+            if waiting_logged {
+                log::info!("All open contracts are closed; exposure drain complete, stopping bot");
+            }
+            return true;
+        }
+        if !waiting_logged {
+            log::info!(
+                "Stop requested with open contract exposure; waiting for closure (risk_tracked={}, executor_tracked={})",
+                risk_ids.len(),
+                executor_count
+            );
+            waiting_logged = true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+
+        retry.tick().await;
+        log::info!("Re-subscribing {} tracked open contract(s)", risk_ids.len());
+        for contract_id in risk_ids {
+            if let Err(error) = command_tx.try_send(ApiCommand::SubscribeContract { contract_id }) {
+                log::warn!("Drain subscription delivery deferred: {}", error);
+            }
+        }
+        if let Err(error) = command_tx.try_send(ApiCommand::RequestPortfolio) {
+            log::warn!(
+                "Drain portfolio reconciliation delivery deferred: {}",
+                error
+            );
+        }
+    }
 }
 
 #[tokio::main]
@@ -233,10 +278,16 @@ async fn main() -> Result<()> {
         runtime_risk_config,
     )));
     let _runtime_lock = init_risk_state(risk_manager.clone())?;
-    anyhow::ensure!(
-        !risk_manager.read().is_stopped(),
-        "persistent risk stop is engaged; operator review is required"
-    );
+    {
+        let risk = risk_manager.read();
+        anyhow::ensure!(
+            !risk.is_stopped() || !risk.safety_open_contracts.is_empty(),
+            "persistent risk stop is engaged; operator review is required"
+        );
+        if risk.is_stopped() {
+            log::warn!("Starting in reconciliation-only mode; new entries remain blocked");
+        }
+    }
     log::info!("Trading currency: {}", account_currency);
 
     // ── Step 3: Request OTP ──────────────────────────────────
@@ -331,6 +382,10 @@ async fn main() -> Result<()> {
     // Executor takes it on ContractOpened to populate open_contracts.
     // symbol, proposed price, epoch of the tick on which the buy was queued.
     let pending_buy_info: Arc<RwLock<Option<PendingBuyInfo>>> = Arc::new(RwLock::new(None));
+    // Executor-owned exposure view. Shutdown waits for this and the authoritative
+    // risk ledger, so transport cannot close while either still tracks exposure.
+    let executor_open_contracts: Arc<RwLock<HashSet<String>>> =
+        Arc::new(RwLock::new(HashSet::new()));
 
     // ── Spawn: Strategy Analyzer + Trader ────────────────────
     let hl1 = history_loader.clone();
@@ -349,6 +404,16 @@ async fn main() -> Result<()> {
     let mut strategy_shutdown = runtime_shutdown.subscribe();
     let strategy_task = tokio::spawn(async move {
         log::info!("[Strategy] Started");
+        let strategy_started_at = Instant::now();
+        let advanced_families_delay = advanced_families_activation_delay();
+        log::info!(
+            "[Strategy] MATCHES/DIFF and RISE/FALL activation scheduled after {} seconds",
+            advanced_families_delay.as_secs()
+        );
+        journal_event(
+            "advanced_families_activation_scheduled",
+            serde_json::json!({"delay_secs": advanced_families_delay.as_secs()}),
+        );
         let mut pacer = ExecutionPacer::new();
         let mut state = TradeState::Idle;
         state.transition(TradeState::CollectingTicks);
@@ -385,7 +450,7 @@ async fn main() -> Result<()> {
         log::info!(
             "[Strategy] Contract families: ACCU{}",
             if digit_contracts_enabled {
-                " + OVER/UNDER + MATCHES/DIFF + RISE/FALL (random, market-adjusted)"
+                " + OVER/UNDER + MATCHES/DIFF + RISE/FALL (weighted contract-family diversification under market and risk constraints)"
             } else {
                 " (digit contracts disabled in live mode)"
             }
@@ -400,6 +465,17 @@ async fn main() -> Result<()> {
                 Ok(ApiEvent::Connected) => {
                     let mode = rm1.read().current_mode();
                     log::info!("[Strategy] Connected! Mode={}", mode);
+                    let persisted_ids = risk_v2_open_contract_ids();
+                    if !persisted_ids.is_empty() {
+                        log::warn!(
+                            "[Strategy] Reconciling {} persisted open exposure(s)",
+                            persisted_ids.len()
+                        );
+                        let _ = cmd1.try_send(ApiCommand::RequestPortfolio);
+                        for contract_id in persisted_ids {
+                            let _ = cmd1.try_send(ApiCommand::SubscribeContract { contract_id });
+                        }
+                    }
                     if let Some(contract_id) = active_contract.clone() {
                         if let Err(error) =
                             cmd1.try_send(ApiCommand::SubscribeContract { contract_id })
@@ -434,6 +510,13 @@ async fn main() -> Result<()> {
                     }
 
                     hl1.write().push_tick(&tick);
+                    if let Err(error) = append_history_tick(&history_path, &tick) {
+                        log::warn!(
+                            "[History] Failed to persist {} tick: {}",
+                            tick.symbol,
+                            error
+                        );
+                    }
                     let predictor_ticks: Vec<Tick> = {
                         let history = hl1.read();
                         history
@@ -460,9 +543,7 @@ async fn main() -> Result<()> {
                         log::info!("[Strategy] Stopped");
                         break;
                     }
-                    if mode == TradingMode::Cooldown {
-                        continue;
-                    }
+                    let risk_cooldown_active = mode == TradingMode::Cooldown;
                     if !rot1.read().market_available(&selected_market) {
                         selected_market = rot1.write().next_index();
                         if !rot1.read().market_available(&selected_market) {
@@ -567,48 +648,39 @@ async fn main() -> Result<()> {
                         && state == TradeState::CollectingTicks
                         && Instant::now() >= next_market_rank_at
                     {
-                        let ranked_choice = {
-                            let history = hl1.read();
-                            let rotator = rot1.read();
-                            let ranked = rotator.ranked_historical_markets(&history, tick.epoch);
-                            ranked.first().cloned().map(|best| (best, ranked))
-                        };
                         next_market_rank_at =
                             Instant::now() + Duration::from_secs(MARKET_RANK_REFRESH_SECS);
-                        let Some((candidate, pool)) = ranked_choice else {
-                            log::debug!("[MarketRank] No fresh market has enough history");
-                            continue;
+                        let ranked = {
+                            let history = hl1.read();
+                            rot1.read().ranked_historical_markets(&history, tick.epoch)
                         };
-                        if candidate.score < MIN_MARKET_QUALITY_SCORE {
-                            log::debug!(
-                                "[MarketRank] Abstaining: best {} score={:.3} below quality floor {:.3}",
-                                candidate.symbol,
-                                candidate.score,
-                                MIN_MARKET_QUALITY_SCORE
-                            );
-                            continue;
-                        }
-                        let current_score = pool
-                            .iter()
-                            .find(|market| market.symbol == selected_market)
-                            .map(|market| market.score);
-                        let should_switch = selected_market != candidate.symbol
-                            && current_score.is_none_or(|score| {
+                        if let Some(candidate) = ranked.first() {
+                            let current_score = ranked
+                                .iter()
+                                .find(|market| market.symbol == selected_market)
+                                .map(|market| market.score);
+                            let clears_floor = candidate.score >= MIN_MARKET_QUALITY_SCORE;
+                            let materially_better = current_score.is_none_or(|score| {
                                 candidate.score >= score + MARKET_SWITCH_SCORE_MARGIN
                             });
-                        if should_switch {
-                            let pool_summary = pool
-                                .iter()
-                                .map(|market| format!("{}:{:.3}", market.symbol, market.score))
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            log::info!(
-                                "[MarketRank] All-{} [{}] -> deterministic best {} score={:.3} chaos={:.3} conf={:.3} n={} rms={:.6}/{:.6} tail={:.1}% spread={:.6}",
-                                pool.len(), pool_summary, candidate.symbol, candidate.score, candidate.chaos_edge, candidate.theory_confidence, candidate.observations,
-                                candidate.recent_rms, candidate.baseline_rms,
-                                candidate.tail_rate * 100.0, candidate.average_spread
-                            );
-                            selected_market = candidate.symbol;
+                            if clears_floor
+                                && candidate.symbol != selected_market
+                                && materially_better
+                            {
+                                log::info!(
+                                    "[MarketRank] {} -> {} score={:.3} n={} rms={:.6}/{:.6} tail={:.1}% spread={:.6} chaos={:.3} confidence={:.3}",
+                                    selected_market, candidate.symbol, candidate.score,
+                                    candidate.observations, candidate.recent_rms, candidate.baseline_rms,
+                                    candidate.tail_rate * 100.0, candidate.average_spread,
+                                    candidate.chaos_edge, candidate.theory_confidence,
+                                );
+                                selected_market = candidate.symbol.clone();
+                            } else if !clears_floor {
+                                log::debug!(
+                                    "[MarketRank] best {} score={:.3} below floor {:.3}; keeping round-robin selection",
+                                    candidate.symbol, candidate.score, MIN_MARKET_QUALITY_SCORE
+                                );
+                            }
                         }
                     }
                     if tick.symbol != selected_market {
@@ -625,6 +697,13 @@ async fn main() -> Result<()> {
                                 "latency_us": tick_received_at.elapsed().as_micros(),
                             }));
                             state.transition(TradeState::CollectingTicks);
+                            let analysed_market = selected_market.clone();
+                            selected_market = rot1.write().next_index();
+                            log::info!(
+                                "[SCAN] {} had no entry; next market {}",
+                                analysed_market,
+                                selected_market
+                            );
                             continue;
                         }};
                     }
@@ -636,16 +715,33 @@ async fn main() -> Result<()> {
                         );
                         continue;
                     }
-                    if Instant::now() < next_entry_after {
-                        state.transition(TradeState::CollectingTicks);
-                        continue;
+                    macro_rules! defer_entry_during_cooldown {
+                        () => {{
+                            let timed_cooldown_active = Instant::now() < next_entry_after;
+                            let pacing_cooldown_active = pacer.should_skip_signal();
+                            if risk_cooldown_active
+                                || timed_cooldown_active
+                                || pacing_cooldown_active
+                            {
+                                log::debug!(
+                                    "[Strategy][ANALYSE-ONLY] qualified point observed during cooldown: risk={} timed={} pacing={}",
+                                    risk_cooldown_active,
+                                    timed_cooldown_active,
+                                    pacing_cooldown_active
+                                );
+                                state.transition(TradeState::CollectingTicks);
+                                continue;
+                            }
+                        }};
                     }
-                    if BASELINE_RANDOM_MODE {
-                        if pacer.should_skip_signal() {
-                            state.transition(TradeState::CollectingTicks);
-                            continue;
-                        }
+                    if false {
                         let sym = tick.symbol.clone();
+                        // Do not evaluate a contract family (or emit its decision logs)
+                        // until an entry can actually be submitted. Previously this guard
+                        // ran after Rise/Fall walk-forward validation, so every market tick
+                        // during the multi-minute cooldown repeated the same misleading
+                        // "historical validation failed" fallback message.
+                        defer_entry_during_cooldown!();
                         let force_liveness_entry = entry_wait_started_at.elapsed()
                             >= Duration::from_secs(MAX_ENTRY_WAIT_SECS);
                         let market_ticks: Vec<Tick> = {
@@ -737,7 +833,7 @@ async fn main() -> Result<()> {
                                     }
                                 } else {
                                     pending_estimated_win_rate = Some(1.0 - risk.score);
-                                    log::info!("[DIFF] {} | match_risk={:.2} | threshold={:.2} | m={:.2} v={:.2} s={:.2} k={:.0} | stake={:.2} -> TRADE", sym, risk.score, threshold, risk.momentum, risk.velocity, risk.spread, risk.kalman_match, digit_stake);
+                                    log::info!("[DIFF] {} | match_risk={:.2} | threshold={:.2} | m={:.2} v={:.2} s={:.2} k={:.0} | stake={:.2} -> PROPOSAL CANDIDATE", sym, risk.score, threshold, risk.momentum, risk.velocity, risk.spread, risk.kalman_match, digit_stake);
                                     ApiCommand::RequestMatchesDiff {
                                         underlying_symbol: sym.clone(),
                                         currency: proposal_currency.clone(),
@@ -748,40 +844,64 @@ async fn main() -> Result<()> {
                                 }
                             }
                             ContractType::RiseFall => {
-                                let rise_fall_ticks: Vec<Tick> = {
-                                    let history = hl1.read();
-                                    history
-                                        .get_buffer(&sym)
-                                        .map(|buffer| buffer.iter().cloned().collect())
-                                        .unwrap_or_default()
-                                };
-                                if let Some(signal) = validated_rise_fall_signal(&rise_fall_ticks) {
-                                    let contract_type = if signal.bullish { "CALL" } else { "PUT" };
-                                    let rise_fall_stake = rm1.read().stake_for_risk(0.50);
-                                    pending_estimated_win_rate = Some(signal.historical_win_rate);
+                                if !rise_fall_is_active(
+                                    strategy_started_at.elapsed(),
+                                    advanced_families_delay,
+                                ) {
+                                    pending_contract_type = ContractType::Accumulator;
                                     log::info!(
+                                        "[RISE/FALL][WAITING] {} seconds until activation; using ACCU",
+                                        advanced_families_delay.saturating_sub(strategy_started_at.elapsed()).as_secs()
+                                    );
+                                    ApiCommand::RequestProposal {
+                                        underlying_symbol: sym.clone(),
+                                        currency: proposal_currency.clone(),
+                                        amount: accumulator_stake,
+                                        growth_rate: ACCU_GROWTH_RATE,
+                                    }
+                                } else {
+                                    let rise_fall_ticks: Vec<Tick> = {
+                                        let history = hl1.read();
+                                        history
+                                            .get_buffer(&sym)
+                                            .map(|buffer| buffer.iter().cloned().collect())
+                                            .unwrap_or_default()
+                                    };
+                                    if let Some(signal) =
+                                        validated_rise_fall_signal(&rise_fall_ticks)
+                                    {
+                                        let contract_type =
+                                            if signal.bullish { "CALL" } else { "PUT" };
+                                        let rise_fall_stake = rm1.read().stake_for_risk(0.50);
+                                        pending_estimated_win_rate =
+                                            Some(signal.historical_win_rate);
+                                        log::info!(
                                         "[RISE/FALL] {} | direction={} | cs={:.3} cf={:.3} agree={}/8 H={:.3} | walk-forward={}/{} ({:.2}%, lower={:.2}%) | stake={:.2}",
                                         sym, contract_type, signal.consensus, signal.confidence,
                                         signal.agreement, signal.hurst, signal.historical_wins,
                                         signal.historical_trades, signal.historical_win_rate * 100.0,
                                         signal.wilson_lower_rate * 100.0, rise_fall_stake
                                     );
-                                    ApiCommand::RequestRiseFall {
-                                        underlying_symbol: sym.clone(),
-                                        currency: proposal_currency.clone(),
-                                        amount: rise_fall_stake,
-                                        contract_type: contract_type.to_string(),
-                                        duration_ticks: RISE_FALL_DURATION_TICKS,
-                                    }
-                                } else {
-                                    pending_contract_type = ContractType::Accumulator;
-                                    pending_estimated_win_rate = None;
-                                    log::info!("[RISE/FALL] {} | historical validation failed -> ACCU fallback", sym);
-                                    ApiCommand::RequestProposal {
-                                        underlying_symbol: sym.clone(),
-                                        currency: proposal_currency.clone(),
-                                        amount: accumulator_stake,
-                                        growth_rate: ACCU_GROWTH_RATE,
+                                        ApiCommand::RequestRiseFall {
+                                            underlying_symbol: sym.clone(),
+                                            currency: proposal_currency.clone(),
+                                            amount: rise_fall_stake,
+                                            contract_type: contract_type.to_string(),
+                                            duration_minutes: rise_fall_duration_minutes(),
+                                        }
+                                    } else {
+                                        pending_contract_type = ContractType::Accumulator;
+                                        pending_estimated_win_rate = None;
+                                        log::info!(
+                                        "[RISE/FALL] {} | no validated directional signal; using ACCU",
+                                        sym
+                                    );
+                                        ApiCommand::RequestProposal {
+                                            underlying_symbol: sym.clone(),
+                                            currency: proposal_currency.clone(),
+                                            amount: accumulator_stake,
+                                            growth_rate: ACCU_GROWTH_RATE,
+                                        }
                                     }
                                 }
                             }
@@ -850,9 +970,7 @@ async fn main() -> Result<()> {
                         }
                     };
 
-                    if digit_contracts_enabled
-                        && selected_contract_type != ContractType::Accumulator
-                    {
+                    if digit_contracts_enabled && uses_digit_fast_path(selected_contract_type) {
                         let recent_start = all_ticks.len().saturating_sub(120);
                         let recent = &all_ticks[recent_start..];
                         let (match_risk, match_threshold) = latest_match_risk
@@ -866,10 +984,6 @@ async fn main() -> Result<()> {
                         let consensus = digit_bias(recent);
                         let last_digit = tick.last_digit();
                         let stake = rm1.read().stake_for_risk(match_risk.score);
-                        let delay_span = SIGNAL_ENTRY_DELAY_MS_MAX - SIGNAL_ENTRY_DELAY_MS_MIN + 1;
-                        let signal_delay_ms =
-                            SIGNAL_ENTRY_DELAY_MS_MIN + OsRng.next_u64() % delay_span;
-                        sleep(Duration::from_millis(signal_delay_ms)).await;
                         let latency_ms = tick_received_at.elapsed().as_millis() as u64;
                         if latency_ms > MAX_ENTRY_LATENCY_MS {
                             reject_tick!(
@@ -896,7 +1010,7 @@ async fn main() -> Result<()> {
                                 } else {
                                     reject_tick!("[OU] {} neutral consensus {:.3}", sym, consensus);
                                 };
-                                log::info!("[{}] {} | barrier={} | last_digit={} | entry_lat={}ms | signal_delay={}ms | stake=${:.2}", tag, sym, barrier, last_digit, latency_ms, signal_delay_ms, stake);
+                                log::info!("[{}] {} | barrier={} | last_digit={} | decision_lat={}ms | stake=${:.2}", tag, sym, barrier, last_digit, latency_ms, stake);
                                 ApiCommand::RequestOverUnder {
                                     underlying_symbol: sym.clone(),
                                     currency: proposal_currency.clone(),
@@ -920,7 +1034,7 @@ async fn main() -> Result<()> {
                                     stake
                                 };
                                 pending_estimated_win_rate = Some(1.0 - match_risk.score);
-                                log::info!("[DIFF] {} | match_risk={:.2} | threshold={:.2} | barrier={} | stake={:.2} -> TRADE", sym, match_risk.score, match_threshold, last_digit, adjusted_stake);
+                                log::info!("[DIFF] {} | match_risk={:.2} | threshold={:.2} | barrier={} | stake={:.2} -> PROPOSAL CANDIDATE", sym, match_risk.score, match_threshold, last_digit, adjusted_stake);
                                 ApiCommand::RequestMatchesDiff {
                                     underlying_symbol: sym.clone(),
                                     currency: proposal_currency.clone(),
@@ -929,9 +1043,17 @@ async fn main() -> Result<()> {
                                     barrier: last_digit,
                                 }
                             }
-                            ContractType::Accumulator => unreachable!(),
-                            ContractType::RiseFall => unreachable!(),
+                            ContractType::Accumulator | ContractType::RiseFall => {
+                                pending_estimated_win_rate = None;
+                                ApiCommand::RequestProposal {
+                                    underlying_symbol: sym.clone(),
+                                    currency: proposal_currency.clone(),
+                                    amount: stake,
+                                    growth_rate: ACCU_GROWTH_RATE,
+                                }
+                            }
                         };
+                        defer_entry_during_cooldown!();
                         pending_symbol = Some(sym);
                         pending_since = Some(Instant::now());
                         pending_proposal = None;
@@ -968,15 +1090,22 @@ async fn main() -> Result<()> {
                     }
 
                     let scores = individual_model_scores(&all_ticks);
-                    if qualifications1.qualified_count() < MIN_THEORIES_AGREE {
+                    let research_demo = rm1.read().current_mode() == TradingMode::Demo
+                        && qualifications1.qualified_count() < MIN_THEORIES_AGREE;
+                    if !research_demo && qualifications1.qualified_count() < MIN_THEORIES_AGREE {
                         reject_tick!(
                             "[Strategy][QUALIFICATION] only {}/{} models qualified",
                             qualifications1.qualified_count(),
                             MIN_THEORIES_AGREE
                         );
                     }
-                    let Some(qualified_consensus) = qualifications1.consensus(&scores) else {
-                        reject_tick!("[Strategy][QUALIFICATION] no qualified model weight");
+                    let qualified_consensus = if research_demo {
+                        QualificationGate::research_consensus(&scores)
+                    } else {
+                        let Some(consensus) = qualifications1.consensus(&scores) else {
+                            reject_tick!("[Strategy][QUALIFICATION] no qualified model weight");
+                        };
+                        consensus
                     };
                     let cs = qualified_consensus.score;
                     let conf = qualified_consensus.confidence;
@@ -1037,23 +1166,19 @@ async fn main() -> Result<()> {
                             MIN_EFFECTIVE_PROFIT
                         );
                     }
-                    if pacer.should_skip_signal() {
-                        reject_tick!(
-                            "[Strategy][FILTER] {} qualified signal rejected by pacing guard",
-                            tick.symbol
-                        );
-                    }
-
                     let rise_fall_signal = validated_rise_fall_signal(&all_ticks);
-                    let direction_is_exceptional = ENABLE_RISE_FALL
-                        && consensus_path == ConsensusPath::Strong
-                        && rise_fall_signal.is_some();
+                    let direction_is_exceptional =
+                        rise_fall_is_active(strategy_started_at.elapsed(), advanced_families_delay)
+                            && consensus_path == ConsensusPath::Strong
+                            && rise_fall_signal.is_some();
                     let stake = rm1.read().stake_for_risk(if direction_is_exceptional {
                         0.50
                     } else {
                         0.0
                     });
-                    let mode_tag = if consensus_path == ConsensusPath::Relaxed {
+                    let mode_tag = if research_demo {
+                        "DEMO_RESEARCH_ENSEMBLE"
+                    } else if consensus_path == ConsensusPath::Relaxed {
                         "RELAXED"
                     } else {
                         "NORMAL"
@@ -1072,6 +1197,8 @@ async fn main() -> Result<()> {
                             "agreement": agree_cnt,
                             "decision": "accept",
                             "reason": mode_tag,
+                            "provenance": if research_demo { "demo_research_unqualified" } else { "qualified_models" },
+                            "models_evaluated": 8,
                             "stake": stake,
                             "latency_us": tick_received_at.elapsed().as_micros(),
                         }),
@@ -1083,8 +1210,11 @@ async fn main() -> Result<()> {
                     } else {
                         ContractType::Accumulator
                     };
-                    pending_estimated_win_rate =
-                        rise_fall_signal.map(|signal| signal.historical_win_rate);
+                    pending_estimated_win_rate = if direction_is_exceptional {
+                        rise_fall_signal.map(|signal| signal.historical_win_rate)
+                    } else {
+                        None
+                    };
                     pending_entry_tick_epoch = tick.epoch;
                     pending_symbol = Some(sym.clone());
                     pending_since = Some(Instant::now());
@@ -1111,7 +1241,7 @@ async fn main() -> Result<()> {
                             currency: proposal_currency.clone(),
                             amount: stake,
                             contract_type: api_type.to_string(),
-                            duration_ticks: RISE_FALL_DURATION_TICKS,
+                            duration_minutes: rise_fall_duration_minutes(),
                         }
                     } else {
                         ApiCommand::RequestProposal {
@@ -1121,6 +1251,7 @@ async fn main() -> Result<()> {
                             growth_rate: ACCU_GROWTH_RATE,
                         }
                     };
+                    defer_entry_during_cooldown!();
                     if let Err(error) = cmd1.try_send(proposal_command) {
                         log::error!("Proposal command delivery failed: {}", error);
                         pending_symbol = None;
@@ -1174,7 +1305,8 @@ async fn main() -> Result<()> {
                                 payout_allows_trade(ask_price, payout, estimated)
                             {
                                 log::info!(
-                                    "PAYOUT CHECK: required={:.1}% vs estimated={:.1}% -> TRADE",
+                                    "ENTRY CHECK: cutoff={:.1}% | API break-even={:.1}% | estimated={:.1}% -> BUY ELIGIBLE",
+                                    MIN_ENTRY_WIN_RATE * 100.0,
                                     required * 100.0,
                                     estimated * 100.0
                                 );
@@ -1184,8 +1316,9 @@ async fn main() -> Result<()> {
                                 } else {
                                     1.0
                                 };
-                                log::warn!(
-                                    "PAYOUT CHECK: required={:.1}% vs estimated={:.1}% -> ABORT",
+                                log::info!(
+                                    "ENTRY FILTER: cutoff={:.1}% | API break-even={:.1}% | estimated={:.1}% -> SKIP",
+                                    MIN_ENTRY_WIN_RATE * 100.0,
                                     required * 100.0,
                                     estimated * 100.0
                                 );
@@ -1195,11 +1328,10 @@ async fn main() -> Result<()> {
                                 if BASELINE_RANDOM_MODE {
                                     let rejected_type = selected_contract_type;
                                     selected_contract_type = if digit_contracts_enabled {
-                                        random_contract_type()
+                                        random_contract_type(true)
                                     } else {
                                         ContractType::Accumulator
                                     };
-                                    next_market_rank_at = Instant::now();
                                     log::info!(
                                         "[ROTATE] {} -> {} | reason: payout_rejected",
                                         rejected_type,
@@ -1232,7 +1364,7 @@ async fn main() -> Result<()> {
                                     state.transition(TradeState::CollectingTicks);
                                 } else {
                                     log::info!(
-                                        "[FastPath] {} buy queued immediately after proposal",
+                                        "[FastPath] {} buy request queued after proposal approval",
                                         pending_contract_type
                                     );
                                 }
@@ -1274,6 +1406,13 @@ async fn main() -> Result<()> {
                     contract_id,
                     sold_for,
                 }) => {
+                    if active_contract.as_deref() != Some(contract_id.as_str()) {
+                        if let Some(cost) = risk_manager_cost(&contract_id) {
+                            risk_v2_contract_closed(&contract_id, sold_for - cost);
+                            risk_v2_post_trade_invariants();
+                            log::info!("Contract settled during startup/shutdown reconciliation (identifier redacted)");
+                        }
+                    }
                     journal_event(
                         "order_result",
                         serde_json::json!({
@@ -1349,13 +1488,8 @@ async fn main() -> Result<()> {
                     pending_symbol = None;
                     pending_since = None;
                     pending_proposal = None;
-                    next_market_rank_at = Instant::now();
-                    if BASELINE_RANDOM_MODE {
-                        selected_market = rot1.write().next_index();
-                        log::info!("[Strategy] Continuous next market: {}", selected_market);
-                    } else {
-                        log::info!("[Strategy] Re-ranking all markets for the next minute slot");
-                    }
+                    selected_market = rot1.write().next_index();
+                    log::info!("[SCAN] Trade complete; next market: {}", selected_market);
                     state.transition(TradeState::CooldownOrReanalyse);
                     state.transition(TradeState::CollectingTicks);
                 }
@@ -1446,7 +1580,14 @@ async fn main() -> Result<()> {
                     code,
                     message,
                     request_kind,
+                    ..
                 }) => {
+                    if request_kind.as_deref() == Some("sell")
+                        && matches!(code.as_str(), "InvalidtoSell" | "ContractNotFound")
+                    {
+                        log::debug!("Expected sell timing response [{}]: {}", code, message);
+                        continue;
+                    }
                     risk_v2_observe_api_error();
                     log::error!(
                         "Deriv Error [{}]: {} (request={:?})",
@@ -1473,10 +1614,11 @@ async fn main() -> Result<()> {
                             let decision = contract_strategy.initial_decision();
                             selected_contract_type = decision.contract_type;
                             let reason = decision.reason;
-                            next_market_rank_at = Instant::now();
                             log::warn!(
-                                "[BestMarketEntry] Rejected {} proposal; re-ranking all markets and retrying with {} ({})",
-                                rejected_type, selected_contract_type, reason
+                                "[SCAN] Rejected {} proposal; retrying with {} ({})",
+                                rejected_type,
+                                selected_contract_type,
+                                reason
                             );
                         }
                         state.transition(TradeState::CollectingTicks);
@@ -1520,14 +1662,18 @@ async fn main() -> Result<()> {
     let cmd2 = api.command_sender();
     let mut evt_rx2 = api.subscribe_events();
     let pbi2 = pending_buy_info.clone();
+    let executor_exposure2 = executor_open_contracts.clone();
 
     let mut executor_shutdown = runtime_shutdown.subscribe();
     let executor_task = tokio::spawn(async move {
         log::info!("[Executor] Started");
         let mut open_contracts: HashMap<String, (String, f64, u64, u64, Instant)> = HashMap::new();
         let mut auto_contracts: HashMap<String, (String, f64, ContractType)> = HashMap::new();
-        // Timestamped attempts allow rejected or lost sells to retry instead of sticking forever.
-        let mut closing_contracts: HashMap<String, Instant> = HashMap::new();
+        // Entry-tick rejections must wait for a real subsequent market tick.
+        // Other lost requests retain the time-based retry used for network failures.
+        let mut closing_contracts: HashMap<String, (Instant, bool)> = HashMap::new();
+        // The subscription and sell request may report the same settlement.
+        let mut recently_settled: HashMap<String, Instant> = HashMap::new();
         // contract_id → (symbol, buy_price, entry_tick_epoch, ticks_held, opened_at)
         let mut exit_timer = interval(Duration::from_millis(25));
 
@@ -1538,22 +1684,24 @@ async fn main() -> Result<()> {
                 for (contract_id, (symbol, _, _, ticks_held, opened_at)) in open_contracts.iter() {
                     let initial_fallback_due = !closing_contracts.contains_key(contract_id)
                         && opened_at.elapsed() >= Duration::from_millis(INITIAL_SELL_FALLBACK_MS);
-                    let retry_due = closing_contracts.get(contract_id).is_some_and(|last_attempt| {
-                        last_attempt.elapsed() >= Duration::from_millis(SELL_RETRY_MS)
+                    let retry_due = closing_contracts.get(contract_id).is_some_and(|(last_attempt, wait_for_tick)| {
+                        !wait_for_tick && last_attempt.elapsed() >= Duration::from_millis(SELL_RETRY_MS)
                     });
                     if initial_fallback_due || retry_due {
                         log::info!("FAST EXIT RETRY: {} after {} tick(s) (identifier redacted)", symbol, ticks_held);
                         if cmd2.try_send(ApiCommand::SellContract { contract_id: contract_id.clone() }).is_ok() {
-                            closing_contracts.insert(contract_id.clone(), Instant::now());
+                            closing_contracts.insert(contract_id.clone(), (Instant::now(), false));
                         }
                     }
                 }
             }
             event = evt_rx2.recv() => match event {
                 Ok(ApiEvent::ContractOpened { contract_id, buy_price }) => {
+                    executor_exposure2.write().insert(contract_id.clone());
                     // Take pending buy info from Strategy
                     if let Some(info) = pbi2.write().take() {
                         let entry_price = buy_price.unwrap_or(info.proposed_price);
+                        risk_v2_contract_opened(&contract_id, entry_price);
                         if info.contract_type == ContractType::Accumulator {
                             open_contracts.insert(contract_id.clone(), (info.symbol, entry_price, info.entry_tick_epoch, 0u64, Instant::now()));
                             log::info!("[Executor] Tracking ACCU (identifier redacted, entry=${:.4})", entry_price);
@@ -1586,6 +1734,27 @@ async fn main() -> Result<()> {
                     }
                 }
                 Ok(ApiEvent::Portfolio(contracts)) => {
+                    let portfolio_ids: HashSet<&str> = contracts
+                        .iter()
+                        .map(|contract| contract.contract_id.as_str())
+                        .collect();
+                    let locally_tracked: Vec<String> = executor_exposure2
+                        .read()
+                        .iter()
+                        .cloned()
+                        .collect();
+                    for contract_id in locally_tracked {
+                        if !portfolio_ids.contains(contract_id.as_str()) {
+                            open_contracts.remove(&contract_id);
+                            auto_contracts.remove(&contract_id);
+                            closing_contracts.remove(&contract_id);
+                            executor_exposure2.write().remove(&contract_id);
+                            if risk_manager_cost(&contract_id).is_some() {
+                                risk_v2_contract_closed(&contract_id, 0.0);
+                            }
+                            log::info!("Portfolio reconciliation confirmed tracked contract is closed (identifier redacted)");
+                        }
+                    }
                     if let Some(pending_info) = pbi2.read().clone() {
                         let pending_symbol = pending_info.symbol.clone();
                         let entry_tick_epoch = pending_info.entry_tick_epoch;
@@ -1599,6 +1768,13 @@ async fn main() -> Result<()> {
                             .max_by_key(|contract| contract.purchase_time)
                         {
                             let _ = pbi2.write().take();
+                            executor_exposure2
+                                .write()
+                                .insert(contract.contract_id.clone());
+                            risk_v2_contract_opened(
+                                &contract.contract_id,
+                                contract.buy_price,
+                            );
                             if pending_contract_type == ContractType::Accumulator {
                                 open_contracts.entry(contract.contract_id.clone()).or_insert_with(|| (contract.symbol.clone(), contract.buy_price, entry_tick_epoch, 0, Instant::now()));
                             } else {
@@ -1615,8 +1791,15 @@ async fn main() -> Result<()> {
                     contract_id,
                     sold_for,
                 }) => {
+                    executor_exposure2.write().remove(&contract_id);
+                    if let Some(cost) = risk_manager_cost(&contract_id) {
+                        risk_v2_contract_closed(&contract_id, sold_for - cost);
+                        risk_v2_post_trade_invariants();
+                    }
                     closing_contracts.remove(&contract_id);
+                    recently_settled.retain(|_, settled_at| settled_at.elapsed() < Duration::from_secs(300));
                     if let Some((sym, buy_cost, _, ticks_held, _)) = open_contracts.remove(&contract_id) {
+                        recently_settled.insert(contract_id.clone(), Instant::now());
                         let gross_pnl = sold_for - buy_cost;
                         let net_pnl = gross_pnl;
                         let result = TradeResult { profit_loss: net_pnl };
@@ -1636,11 +1819,14 @@ async fn main() -> Result<()> {
 
                         rot2.write().record_result(&sym, result.is_profitable());
                     } else if let Some((sym, buy_cost, contract_type)) = auto_contracts.remove(&contract_id) {
+                        recently_settled.insert(contract_id.clone(), Instant::now());
                         let net_pnl = sold_for - buy_cost;
                         let result = TradeResult { profit_loss: net_pnl };
                         let return_pct = if buy_cost > 0.0 { net_pnl / buy_cost * 100.0 } else { 0.0 };
                         log::info!("[CLOSE] {} | {} | PnL={:+.2} | {:+.0}% (identifier redacted)", contract_type, sym, net_pnl, return_pct);
                         rot2.write().record_result(&sym, result.is_profitable());
+                    } else if recently_settled.contains_key(&contract_id) {
+                        log::debug!("[Executor] Ignoring duplicate settlement (identifier redacted)");
                     } else {
                         log::warn!("[Executor] Sold unknown contract (identifier redacted)");
                     }
@@ -1649,10 +1835,14 @@ async fn main() -> Result<()> {
                     for (contract_id, (symbol, _, entry_tick_epoch, ticks_held, _)) in open_contracts.iter_mut() {
                         if symbol == &tick.symbol
                             && tick.epoch > *entry_tick_epoch
-                            && !closing_contracts.contains_key(contract_id)
                         {
                             *ticks_held += 1;
-                            if *ticks_held >= MAX_ACCUMULATOR_HOLD_TICKS {
+                            let retry_after_entry_rejection = closing_contracts
+                                .get(contract_id)
+                                .is_some_and(|(_, wait_for_tick)| *wait_for_tick);
+                            if *ticks_held >= MAX_ACCUMULATOR_HOLD_TICKS
+                                && (!closing_contracts.contains_key(contract_id) || retry_after_entry_rejection)
+                            {
                                 log::info!(
                                     "MAX-HOLD EXIT: {} after {} ticks (identifier redacted)",
                                     symbol, ticks_held
@@ -1660,7 +1850,7 @@ async fn main() -> Result<()> {
                                 if cmd2.try_send(ApiCommand::SellContract {
                                     contract_id: contract_id.clone(),
                                 }).is_ok() {
-                                    closing_contracts.insert(contract_id.clone(), Instant::now());
+                                    closing_contracts.insert(contract_id.clone(), (Instant::now(), false));
                                 }
                             }
                         }
@@ -1694,7 +1884,7 @@ async fn main() -> Result<()> {
                                 if cmd2.try_send(ApiCommand::SellContract {
                                     contract_id: contract_id.clone(),
                                 }).is_ok() {
-                                    closing_contracts.insert(contract_id, Instant::now());
+                                    closing_contracts.insert(contract_id, (Instant::now(), false));
                                 }
                             }
                         }
@@ -1703,8 +1893,25 @@ async fn main() -> Result<()> {
                 Ok(ApiEvent::Disconnected) => {
                     log::warn!("[Executor] Disconnected; retaining {} open contract(s)", open_contracts.len());
                 }
-                Ok(ApiEvent::Error { code, message, .. }) => {
-                    log::error!("[Executor] Deriv Error [{}]: {}", code, message);
+                Ok(ApiEvent::Error { code, message, request_kind, request_contract_id }) => {
+                    if request_kind.as_deref() == Some("sell") && code == "InvalidtoSell" {
+                        if let Some(contract_id) = request_contract_id.as_ref() {
+                            if let Some(attempt) = closing_contracts.get_mut(contract_id) {
+                                attempt.1 = true;
+                            }
+                        }
+                        log::debug!("[Executor] Sell deferred by provider until the next tick");
+                    } else if request_kind.as_deref() == Some("sell")
+                        && code == "ContractNotFound"
+                        && request_contract_id.as_ref().is_some_and(|contract_id| {
+                            !open_contracts.contains_key(contract_id)
+                                || recently_settled.contains_key(contract_id)
+                        })
+                    {
+                        log::debug!("[Executor] Ignoring late sell response for settled contract");
+                    } else {
+                        log::error!("[Executor] Deriv Error [{}]: {}", code, message);
+                    }
                 }
                 Err(broadcast::error::RecvError::Closed) => {
                     log::info!("[Executor] Channel closed");
@@ -1722,6 +1929,7 @@ async fn main() -> Result<()> {
     // ── Spawn: Risk Monitor ────────────────────
     let rm3 = risk_manager.clone();
     let shutdown3 = api.shutdown_sender();
+    let executor_exposure3 = executor_open_contracts.clone();
     let mut evt_rx3 = api.subscribe_events();
 
     let mut risk_shutdown = runtime_shutdown.subscribe();
@@ -1734,7 +1942,9 @@ async fn main() -> Result<()> {
                 _ = risk_shutdown.recv() => { break; }
                 _ = ticker.tick() => {
                     let mode = { let mut risk = rm3.write(); risk.evaluate(); risk.current_mode() };
-                    if mode == TradingMode::Stopped && rm3.read().safety_open_contracts.is_empty() {
+                    if mode == TradingMode::Stopped
+                        && rm3.read().safety_open_contracts.is_empty()
+                        && executor_exposure3.read().is_empty() {
                         log::info!("[RiskMonitor] Stop engaged and exposure drained; stopping WebSocket");
                         let _ = shutdown3.send(());
                         break;
@@ -1774,7 +1984,7 @@ async fn main() -> Result<()> {
                 0.0
             };
             log::info!(
-                "STATUS | ticks={} | {} | avg_lat={:.1}ms | {}",
+                "STATUS | ticks={} | {} | tick_epoch_phase={:.1}ms | {}",
                 ticks,
                 rm.type_summary(),
                 avg_lat_ms,
@@ -1804,7 +2014,7 @@ async fn main() -> Result<()> {
     tokio::select! {
         result = tokio::signal::ctrl_c() => {
             result?;
-            log::info!("Ctrl+C received. Engaging persistent stop and draining exposure...");
+            log::info!("Stop signal received. Engaging persistent stop and draining any open contract exposure...");
             risk_v2_stop("operator interrupt");
         }
         _ = auto_stop => {
@@ -1817,16 +2027,18 @@ async fn main() -> Result<()> {
     }
 
     if risk_manager.read().is_stopped() {
-        let drain_deadline = Instant::now() + Duration::from_secs(CONTRACT_UPDATE_TIMEOUT_SECS);
-        while !risk_manager.read().safety_open_contracts.is_empty()
-            && Instant::now() < drain_deadline
-        {
-            sleep(Duration::from_millis(100)).await;
+        log::info!("Stopping new entries; entering exposure drain mode");
+        let drained = wait_for_exposure_drain(
+            &risk_manager,
+            &executor_open_contracts,
+            &api.command_sender(),
+            shutdown_drain_timeout(),
+        )
+        .await;
+        if !drained {
+            persist_open_exposure();
+            log::error!("Exposure pending / review locked: open exposure persisted after shutdown drain deadline");
         }
-        anyhow::ensure!(
-            risk_manager.read().safety_open_contracts.is_empty(),
-            "open exposure did not drain before shutdown deadline"
-        );
     }
     let _ = runtime_shutdown.send(());
     let _ = api.shutdown_tx.send(());
@@ -1848,8 +2060,12 @@ async fn main() -> Result<()> {
     journal_flush()?;
 
     let rm = risk_manager.read();
+    if rm.safety_open_contracts.is_empty() {
+        log::info!("Open exposure = 0");
+    }
+    log::info!("Risk state persisted");
     log::info!("FINAL: {}", rm.summary());
-    log::info!("Goodbye.");
+    log::info!("Shutdown complete");
 
     Ok(())
 }
@@ -1857,6 +2073,45 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn ctrl_c_three_seconds_after_contract_opened_keeps_drain_alive_until_settlement() {
+        let risk = Arc::new(RwLock::new(RiskManager::with_mode(
+            Money(100_000),
+            TradingMode::Demo,
+        )));
+        risk.write()
+            .safety_open_contracts
+            .insert("contract-1".into(), Money(100));
+        sleep(Duration::from_secs(3)).await;
+        risk.write().engage_stop("operator interrupt");
+
+        let executor_exposure = Arc::new(RwLock::new(HashSet::from(["contract-1".to_string()])));
+        let settlement_risk = risk.clone();
+        let settlement_executor = executor_exposure.clone();
+        tokio::spawn(async move {
+            sleep(Duration::from_secs(1)).await;
+            settlement_risk
+                .write()
+                .safety_open_contracts
+                .remove("contract-1");
+            settlement_executor.write().remove("contract-1");
+        });
+
+        let (command_tx, _command_rx) = mpsc::channel(8);
+        let command_tx = BrokerCommandSender { inner: command_tx };
+        assert!(
+            wait_for_exposure_drain(
+                &risk,
+                &executor_exposure,
+                &command_tx,
+                Duration::from_secs(2),
+            )
+            .await
+        );
+        assert!(risk.read().is_stopped());
+        assert!(risk.read().safety_open_contracts.is_empty());
+    }
 
     #[tokio::test(start_paused = true)]
     async fn cooperative_runtime_tasks_are_all_joined() {
@@ -1924,10 +2179,10 @@ mod tests {
     }
 
     #[test]
-    fn payout_gate_uses_price_over_total_payout() {
-        let required = payout_allows_trade(1.0, 1.10, 0.92).unwrap();
+    fn payout_gate_enters_at_sixty_five_percent_and_reports_api_requirement() {
+        let required = payout_allows_trade(1.0, 1.10, 0.65).unwrap();
         assert!((required - (1.0 / 1.10)).abs() < 1e-9);
-        assert!(payout_allows_trade(1.0, 1.10, 0.90).is_none());
+        assert!(payout_allows_trade(1.0, 1.10, 0.6499).is_none());
         assert!(payout_allows_trade(1.0, 0.0, 0.99).is_none());
     }
 
@@ -1940,10 +2195,27 @@ mod tests {
         assert!(after[2] < before[2]);
         for _ in 0..100 {
             assert!(matches!(
-                rotator.next_type().0,
-                ContractType::Accumulator | ContractType::OverUnder | ContractType::MatchesDiff
+                rotator.next_type(true).0,
+                ContractType::Accumulator
+                    | ContractType::OverUnder
+                    | ContractType::MatchesDiff
+                    | ContractType::RiseFall
             ));
         }
+    }
+
+    #[test]
+    fn contract_type_rotator_selects_the_highest_effective_weight() {
+        let mut rotator = ContractTypeRotator::new();
+
+        let (initial, reason) = rotator.next_type(true);
+        assert_eq!(initial, ContractType::Accumulator);
+        assert_eq!(reason, "highest_weight");
+
+        rotator.record_result(ContractType::Accumulator, false);
+        let (after_loss, reason) = rotator.next_type(true);
+        assert_eq!(after_loss, ContractType::OverUnder);
+        assert_eq!(reason, "highest_weight");
     }
 
     #[test]
@@ -1993,21 +2265,55 @@ mod tests {
     }
 
     #[test]
-    fn profitable_session_is_not_capped_or_paused() {
+    fn session_profit_is_locked_at_three_dollars() {
         let mut risk = RiskManager::new();
         risk.mode = TradingMode::Demo;
         risk.resume_mode = TradingMode::Demo;
-        risk.session_pnl = 100.0;
+        risk.session_pnl = 3.0;
         risk.evaluate();
-        assert_eq!(risk.current_mode(), TradingMode::Demo);
-        assert!(risk.profit_cooldown_until.is_none());
+        assert_eq!(risk.current_mode(), TradingMode::Stopped);
+        assert_eq!(
+            risk.stop_reason.as_deref(),
+            Some("session profit target reached")
+        );
+    }
+
+    #[test]
+    fn trailing_profit_lock_does_not_interrupt_wins_but_stops_giveback() {
+        let mut risk = RiskManager::with_balance(Money(10_000));
+        risk.mode = TradingMode::Demo;
+
+        for _ in 0..2 {
+            risk.record_trade(&TradeResult { profit_loss: 1.00 });
+            assert!(!risk.is_stopped());
+        }
+        assert_eq!(risk.peak_pnl, 2.00);
+
+        // A $1 noise allowance applies to this $100 balance.
+        risk.record_trade(&TradeResult { profit_loss: -0.99 });
+        assert!(!risk.is_stopped());
+        risk.record_trade(&TradeResult { profit_loss: -0.01 });
+        assert!(risk.is_stopped());
+        assert_eq!(
+            risk.stop_reason.as_deref(),
+            Some("trailing profit-lock circuit breaker")
+        );
+    }
+
+    #[test]
+    fn trailing_profit_lock_stays_inactive_before_profit_cushion_exists() {
+        let mut risk = RiskManager::with_balance(Money(10_000));
+        risk.mode = TradingMode::Demo;
+        risk.record_trade(&TradeResult { profit_loss: 1.90 });
+        risk.record_trade(&TradeResult { profit_loss: -1.00 });
+        assert!(!risk.is_stopped());
     }
 
     #[test]
     fn accumulator_stake_is_owned_by_the_risk_engine() {
         let risk = RiskManager::with_balance(Money(50_000));
-        assert_eq!(risk.current_stake(), 5.00);
-        assert_eq!(risk.accumulator_stake(750.00), 5.00);
+        assert_eq!(risk.current_stake(), 30.00);
+        assert_eq!(risk.accumulator_stake(750.00), 30.00);
     }
 
     #[test]
@@ -2026,6 +2332,20 @@ mod tests {
         risk.record_trade(&TradeResult { profit_loss: 0.05 });
         assert!((MIN_RECOVERY_STAKE..=risk.base_stake.api_amount()).contains(&risk.current_stake()));
         assert_eq!(risk.recovery_wins, 0);
+    }
+
+    #[test]
+    fn consecutive_loss_limit_stops_without_increasing_stake() {
+        let mut risk = RiskManager::with_balance(Money(100_000));
+        for _ in 0..risk.runtime_config.max_consecutive_losses {
+            risk.record_trade(&TradeResult { profit_loss: -0.10 });
+            assert_eq!(risk.current_stake(), MIN_RECOVERY_STAKE);
+        }
+        assert!(risk.is_stopped());
+        assert_eq!(
+            risk.stop_reason.as_deref(),
+            Some("consecutive-loss circuit breaker")
+        );
     }
 
     #[test]
@@ -2073,7 +2393,7 @@ mod tests {
     #[test]
     fn signal_risk_monotonically_decreases_stake() {
         assert_eq!(stake_for_signal_risk(STAKE_AMOUNT, 0.0), STAKE_AMOUNT);
-        assert_eq!(stake_for_signal_risk(STAKE_AMOUNT, 0.5), 5.5);
+        assert_eq!(stake_for_signal_risk(STAKE_AMOUNT, 0.5), 50.5);
         assert_eq!(stake_for_signal_risk(STAKE_AMOUNT, 1.0), MIN_RECOVERY_STAKE);
     }
 
@@ -2090,13 +2410,14 @@ mod tests {
 
     #[test]
     fn balance_sizing_and_absolute_cap_are_enforced() {
+        assert_eq!(RiskManager::with_balance(Money(5_000)).current_stake(), 3.0);
         assert_eq!(
             RiskManager::with_balance(Money(50_000)).current_stake(),
-            5.0
+            30.0
         );
         assert_eq!(
             RiskManager::with_balance(Money(100_000_000)).current_stake(),
-            10.0
+            100.0
         );
         assert_eq!(RiskManager::with_balance(Money(100)).current_stake(), 1.0);
     }
@@ -2128,11 +2449,11 @@ mod tests {
     }
 
     #[test]
-    fn random_market_selection_always_returns_a_configured_market() {
+    fn sequential_market_selection_returns_configured_markets_in_order() {
         let markets = vec!["R_10".to_string(), "R_25".to_string(), "R_50".to_string()];
         let mut rotator = IndexRotator::new(markets.clone());
-        for _ in 0..100 {
-            assert!(markets.contains(&rotator.next_index()));
+        for expected in markets.iter().cycle().take(markets.len() * 3) {
+            assert_eq!(&rotator.next_index(), expected);
         }
     }
 
@@ -2257,11 +2578,27 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires the external downloader dataset"]
-    fn external_history_dataset_loads_all_configured_markets() {
-        let path = env::var("HISTORY_TEST_PATH").expect("set HISTORY_TEST_PATH");
+    fn history_dataset_loads_all_configured_markets() {
+        use std::fmt::Write as _;
+
+        let path = std::env::temp_dir().join(format!(
+            "deriv-history-all-markets-{}-{}",
+            std::process::id(),
+            Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        fs::create_dir(&path).unwrap();
         let symbols: Vec<String> = AVAILABLE_INDICES.iter().map(|s| s.to_string()).collect();
-        let loader = HistoryLoader::load(&path, &symbols, TICK_BUFFER_CAP).unwrap();
+        for (symbol_index, symbol) in symbols.iter().enumerate() {
+            let mut csv = String::new();
+            for epoch in (1..=TICK_BUFFER_CAP + 1).rev() {
+                writeln!(csv, "ignored,{epoch},{}", 100.0 + symbol_index as f64).unwrap();
+            }
+            fs::write(path.join(format!("{symbol}.csv")), csv).unwrap();
+        }
+
+        let loader =
+            HistoryLoader::load(path.to_str().unwrap(), &symbols, TICK_BUFFER_CAP).unwrap();
+        fs::remove_dir_all(&path).unwrap();
         assert_eq!(loader.loaded_count, symbols.len() * TICK_BUFFER_CAP);
         for symbol in symbols {
             let ticks: Vec<_> = loader.get_buffer(&symbol).unwrap().iter().collect();
@@ -2353,7 +2690,8 @@ mod tests {
     }
 
     #[test]
-    fn opened_trade_activates_three_minute_pacing_guard() {
+    fn opened_trade_activates_thirty_second_pacing_guard() {
+        assert_eq!(TRADE_COOLDOWN_MS, 30_000);
         let mut pacer = ExecutionPacer::new();
         pacer.record_trade_opened();
         assert!(pacer.should_skip_signal());
@@ -2470,6 +2808,28 @@ mod tests {
         assert!((0.0..=1.0).contains(&stable_score.chaos_edge));
         assert!((0.0..=1.0).contains(&stable_score.theory_confidence));
         assert!(historical_market_score("R_10", &stable, 1_300).is_none());
+    }
+
+    #[test]
+    fn rise_fall_never_uses_the_digit_fast_path() {
+        assert!(!uses_digit_fast_path(ContractType::RiseFall));
+        assert!(!uses_digit_fast_path(ContractType::Accumulator));
+        assert!(uses_digit_fast_path(ContractType::OverUnder));
+        assert!(uses_digit_fast_path(ContractType::MatchesDiff));
+    }
+
+    #[test]
+    fn rise_fall_activates_at_exact_three_hour_boundary() {
+        let delay = Duration::from_secs(3 * 60 * 60);
+        assert!(!rise_fall_is_active(
+            Duration::from_secs(delay.as_secs() - 1),
+            delay
+        ));
+        assert!(rise_fall_is_active(delay, delay));
+        assert!(rise_fall_is_active(
+            Duration::from_secs(delay.as_secs() + 1),
+            delay
+        ));
     }
 
     #[test]

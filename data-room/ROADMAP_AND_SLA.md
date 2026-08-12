@@ -2,7 +2,7 @@
 
 ## Value-priority roadmap
 
-1. Obtain clean dataset licences, chain-of-title signatures, and current API-terms legal memo.
+1. Archive the Deriv retention confirmation, obtain any separately needed redistribution rights, complete chain-of-title signatures, and obtain a current API-terms legal memo.
 2. Produce locked, buyer-reproducible holdout/ablation evidence with no strategy changes after lock.
 3. Complete second broker adapter against the existing interface.
 4. Commission independent security, code, quant, and risk audits.

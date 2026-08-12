@@ -392,22 +392,28 @@ fn wilson_lower_bound(wins: usize, trades: usize) -> f64 {
 // only its prefix, and its outcome ends before the current decision.
 fn validated_rise_fall_signal(ticks: &[Tick]) -> Option<RiseFallSignal> {
     let (bullish, consensus, confidence, agreement, hurst) = raw_rise_fall_signal(ticks)?;
-    let horizon = RISE_FALL_DURATION_TICKS as usize;
+    let horizon_seconds = u64::from(rise_fall_duration_minutes()) * 60;
     let start = ticks
         .len()
         .saturating_sub(RISE_FALL_BACKTEST_TICKS)
         .max(RISE_FALL_MODEL_WINDOW);
-    let end = ticks.len().saturating_sub(horizon);
     let mut wins = 0usize;
     let mut trades = 0usize;
-    for decision_end in start..end {
+    for decision_end in start..ticks.len() {
         let prefix_start = decision_end.saturating_sub(RISE_FALL_MODEL_WINDOW);
         let Some((past_bullish, ..)) = raw_rise_fall_signal(&ticks[prefix_start..decision_end])
         else {
             continue;
         };
         let entry = ticks[decision_end - 1].mid_price();
-        let exit = ticks[decision_end + horizon - 1].mid_price();
+        let expiry_epoch = ticks[decision_end - 1].epoch.saturating_add(horizon_seconds);
+        let Some(exit_tick) = ticks[decision_end..]
+            .iter()
+            .find(|tick| tick.epoch >= expiry_epoch)
+        else {
+            continue;
+        };
+        let exit = exit_tick.mid_price();
         wins += usize::from(if past_bullish {
             exit > entry
         } else {

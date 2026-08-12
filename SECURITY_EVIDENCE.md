@@ -1,6 +1,6 @@
 # Reliability and Security Evidence
 
-Evidence date: 2026-08-03
+Evidence refreshed: 2026-08-10
 
 ## Verified locally
 
@@ -8,9 +8,9 @@ Evidence date: 2026-08-03
 - 10,000 malformed/hostile JSON cases completed without panic or a fabricated contract-open event.
 - 10,000 seeded state-transition properties matched the allow-list; rejected transitions did not mutate state.
 - 10,000 deterministic RNG steps matched for identical seeds.
-- The full suite passed: 75 passed, 0 failed, 1 ignored.
-- Two isolated locked release builds were bit-for-bit identical (SHA-256 b28592d78b8d9ba0867a2479ea0fc4859e273651633fba66f5b41c3af322005f).
-- RustSec scanned 218 locked dependencies against advisory database commit d91a8fc9492378f23cba86b81770c6d16de6ebba: 0 known vulnerabilities.
+- The current full suite passed: 98 passed, 0 failed, 0 ignored across all four binaries.
+- On 2026-08-03, two isolated locked release builds were bit-for-bit identical (SHA-256 b28592d78b8d9ba0867a2479ea0fc4859e273651633fba66f5b41c3af322005f).
+- On 2026-08-03, RustSec scanned 218 locked dependencies against advisory database commit d91a8fc9492378f23cba86b81770c6d16de6ebba: 0 known vulnerabilities.
 
 These are engineering test results, not profitability or live-trading results. The duplicate-buy test is a lifecycle proof model plus existing runtime characterization tests; it is not a claim that 10,000 real broker sessions were executed.
 
@@ -24,5 +24,13 @@ These are engineering test results, not profitability or live-trading results. T
 - OS keychain/Vault integration.
 - OAuth2 PKCE, RBAC, and multi-user security.
 - Full process-level network chaos against a broker-compatible proxy.
+
+## Automated release gates
+
+Every push and pull request now checks formatting, strict Clippy warnings,
+all Rust targets, the RustSec advisory database, and a complete container
+build. CI has read-only repository permissions and cancels superseded runs.
+These gates establish build and dependency hygiene only; they do not establish
+trading performance.
 
 These remain release gates. They must not appear in buyer material as completed work.

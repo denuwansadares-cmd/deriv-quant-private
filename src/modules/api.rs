@@ -27,7 +27,7 @@ enum ApiCommand {
         currency: String,
         amount: f64,
         contract_type: String,
-        duration_ticks: u8,
+        duration_minutes: u16,
     },
     BuyContract {
         proposal_id: String,
@@ -82,6 +82,7 @@ enum ApiEvent {
         code: String,
         message: String,
         request_kind: Option<String>,
+        request_contract_id: Option<String>,
     },
 }
 
@@ -403,19 +404,19 @@ async fn ws_task(
                                         "passthrough": {"kind": "proposal", "symbol": underlying_symbol}
                                     })
                                 }
-                                ApiCommand::RequestRiseFall { underlying_symbol, currency, amount, contract_type, duration_ticks } => {
+                                ApiCommand::RequestRiseFall { underlying_symbol, currency, amount, contract_type, duration_minutes } => {
                                     let amount = deriv_stake(*amount);
-                                    log::info!("Rise/Fall proposal: {} {} ticks={} stake={:.2}", underlying_symbol, contract_type, duration_ticks, amount);
+                                    log::info!("Rise/Fall proposal: {} {} expiry={}m stake={:.2}", underlying_symbol, contract_type, duration_minutes, amount);
                                     serde_json::json!({
                                         "proposal": 1, "amount": amount, "basis": "stake",
                                         "contract_type": contract_type, "currency": currency,
-                                        "duration": duration_ticks, "duration_unit": "t",
+                                        "duration": duration_minutes, "duration_unit": "m",
                                         "underlying_symbol": underlying_symbol,
                                         "passthrough": {"kind": "proposal", "symbol": underlying_symbol}
                                     })
                                 }
                                 ApiCommand::BuyContract { proposal_id, price } => {
-                                    log::info!("Buying confirmed proposal @ ${:.4} (identifier redacted)", price);
+                                    log::info!("Dispatching buy request for approved proposal @ ${:.4} (identifier redacted)", price);
                                     serde_json::json!({"buy": proposal_id, "price": price, "passthrough": {"kind": "buy", "proposal_id": proposal_id}})
                                 }
                                 ApiCommand::SellContract { contract_id } => {
@@ -480,6 +481,11 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
         .pointer("/echo_req/passthrough/kind")
         .and_then(|value| value.as_str())
         .map(str::to_string);
+    let request_contract_id = v
+        .pointer("/echo_req/passthrough/contract_id")
+        .or_else(|| v.pointer("/echo_req/sell"))
+        .map(json_contract_id)
+        .filter(|contract_id| !contract_id.is_empty());
 
     if let Some(err) = v.get("error") {
         let code = err
@@ -496,6 +502,7 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
             code,
             message,
             request_kind: request_kind.clone(),
+            request_contract_id: request_contract_id.clone(),
         });
         return Ok(());
     }
@@ -511,6 +518,7 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
                 code,
                 message,
                 request_kind: request_kind.clone(),
+                request_contract_id: request_contract_id.clone(),
             });
         }
         return Ok(());
@@ -803,4 +811,3 @@ fn json_contract_id(v: &serde_json::Value) -> String {
         .or_else(|| v.as_i64().map(|n| n.to_string()))
         .unwrap_or_default()
 }
-

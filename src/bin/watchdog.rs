@@ -11,6 +11,7 @@ const HEARTBEAT_NAME: &str = "runtime-heartbeat";
 const STOP_NAME: &str = "emergency.stop";
 const STATE_NAME: &str = "stop-state.json";
 const LOCK_NAME: &str = "runtime.lock";
+const DESIRED_DEMO_NAME: &str = "desired-demo-mode";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct RuntimeIdentity {
@@ -105,7 +106,17 @@ fn heartbeat_fresh(stale_secs: u64) -> bool {
         .and_then(|modified| SystemTime::now().duration_since(modified).ok())
         .is_some_and(|age| age < Duration::from_secs(stale_secs))
 }
+fn runtime_desired() -> bool {
+    dir().join(DESIRED_DEMO_NAME).exists()
+}
 fn health_check(stale_secs: u64) -> std::io::Result<()> {
+    if !runtime_desired() {
+        return if dir().join(STOP_NAME).exists() {
+            Err(std::io::Error::other("persistent stop is engaged"))
+        } else {
+            Ok(())
+        };
+    }
     let identity =
         read_identity().ok_or_else(|| std::io::Error::other("runtime identity unavailable"))?;
     if !identity_is_active(&identity) {
@@ -135,43 +146,57 @@ fn main() -> std::io::Result<()> {
         .unwrap_or(30)
         .max(stale_secs);
     fs::create_dir_all(dir())?;
-    let startup_deadline = std::time::Instant::now() + Duration::from_secs(startup_grace_secs);
-    while std::time::Instant::now() < startup_deadline {
-        if read_identity().is_some_and(|identity| identity_is_active(&identity))
-            && heartbeat_fresh(stale_secs)
-        {
-            break;
-        }
-        if dir().join(STOP_NAME).exists() {
-            return Ok(());
-        }
-        thread::sleep(Duration::from_millis(250));
-    }
-    if !read_identity().is_some_and(|identity| identity_is_active(&identity))
-        || !heartbeat_fresh(stale_secs)
-    {
-        latch_stop("watchdog: runtime failed startup health gate")?;
-        return Err(std::io::Error::other(
-            "runtime failed watchdog startup health gate",
-        ));
-    }
     loop {
-        if !heartbeat_fresh(stale_secs) {
-            let reason = format!("watchdog: runtime heartbeat stale for {stale_secs}s");
-            latch_stop(&reason)?;
-            if let Some(identity) = read_identity() {
-                terminate_runtime(&identity);
+        while !runtime_desired() {
+            if dir().join(STOP_NAME).exists() {
+                return Ok(());
             }
-            eprintln!("watchdog latched stop after stale runtime heartbeat");
-            return Ok(());
+            thread::sleep(Duration::from_millis(250));
         }
-        if dir().join(STOP_NAME).exists() {
-            if let Some(identity) = read_identity() {
-                terminate_runtime(&identity);
+        let startup_deadline = std::time::Instant::now() + Duration::from_secs(startup_grace_secs);
+        while std::time::Instant::now() < startup_deadline && runtime_desired() {
+            if read_identity().is_some_and(|identity| identity_is_active(&identity))
+                && heartbeat_fresh(stale_secs)
+            {
+                break;
             }
-            return Ok(());
+            if dir().join(STOP_NAME).exists() {
+                return Ok(());
+            }
+            thread::sleep(Duration::from_millis(250));
         }
-        thread::sleep(Duration::from_secs(1));
+        if !runtime_desired() {
+            continue;
+        }
+        if !read_identity().is_some_and(|identity| identity_is_active(&identity))
+            || !heartbeat_fresh(stale_secs)
+        {
+            latch_stop("watchdog: runtime failed startup health gate")?;
+            return Err(std::io::Error::other(
+                "runtime failed watchdog startup health gate",
+            ));
+        }
+        loop {
+            if !runtime_desired() {
+                break;
+            }
+            if !heartbeat_fresh(stale_secs) {
+                let reason = format!("watchdog: runtime heartbeat stale for {stale_secs}s");
+                latch_stop(&reason)?;
+                if let Some(identity) = read_identity() {
+                    terminate_runtime(&identity);
+                }
+                eprintln!("watchdog latched stop after stale runtime heartbeat");
+                return Ok(());
+            }
+            if dir().join(STOP_NAME).exists() {
+                if let Some(identity) = read_identity() {
+                    terminate_runtime(&identity);
+                }
+                return Ok(());
+            }
+            thread::sleep(Duration::from_secs(1));
+        }
     }
 }
 

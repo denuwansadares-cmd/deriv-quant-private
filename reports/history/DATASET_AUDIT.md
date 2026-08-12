@@ -29,8 +29,8 @@ All files are mixed-order concatenations of ascending batches. Each file has 99 
 
 ## Qualification restriction
 
-The ten-symbol exact synchronized timestamp intersection is empty. Combined cross-market or rotation holdout success must not be claimed. Qualification may only proceed per symbol with chronological train/validation/untouched-holdout splits, subject to licence confirmation. Additional synchronized history covering the same UTC windows for all intended rotation symbols must be downloaded before any combined-market claim.
+The ten-symbol exact synchronized timestamp intersection is empty. Combined cross-market or rotation holdout success must not be claimed. Qualification may proceed per symbol with chronological train/validation/untouched-holdout splits. Additional synchronized history covering the same UTC windows for all intended rotation symbols must be downloaded before any combined-market claim.
 
 ## Licensing
 
-Supplier, licence version, acquisition dates, permitted purposes, retention, redistribution, transfer rights and territory remain unverified. Raw datasets must not be distributed.
+Supplier is Deriv. On 2026-08-06 the operator reported that Deriv support confirmed no separate licence is required for long-term retention of the supplied historical data. The confirmation clears local retention/use but also confirms that the historical data may be transferred and redistributed for the stated use; preserve the original support confirmation as evidence.

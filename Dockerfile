@@ -4,7 +4,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY web ./web
 COPY config ./config
-RUN cargo build --locked --release --bins
+RUN cargo build --locked --release --bins --features live-trading
 
 FROM debian:bookworm-slim
 RUN apt-get update \
@@ -17,6 +17,9 @@ WORKDIR /app
 COPY --from=build /app/target/release/deriv_bot /usr/local/bin/deriv_bot
 COPY --from=build /app/target/release/deriv_watchdog /usr/local/bin/deriv_watchdog
 COPY --from=build /app/target/release/deriv_platform /usr/local/bin/deriv_platform
+COPY --from=build /app/target/release/deriv_supervisor /usr/local/bin/deriv_supervisor
+COPY --from=build /app/target/release/deriv_ops /usr/local/bin/deriv_ops
+COPY --from=build /app/target/release/deriv_history /usr/local/bin/deriv_history
 COPY config ./config
 ENV DERIV_RISK_STATE_DIR=/var/lib/deriv-risk \
     DERIV_AUDIT_JOURNAL_DIR=/var/lib/deriv-audit \

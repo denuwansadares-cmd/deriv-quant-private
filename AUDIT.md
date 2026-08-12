@@ -6,8 +6,9 @@ Audit date: 2026-08-03. This is an engineering due-diligence record, not legal a
 
 | Area | Status | Evidence and required action |
 |---|---|---|
-| Historical CSV ownership/licence | **BLOCKER** | The code can load external CSV files, but no dataset provenance, licence, consent, retention permission, or transfer right is present. Exclude all CSV/history data from a sale unless documented rights are supplied. |
-| Deriv API terms compliance | **CONDITIONAL** | The code uses REST account discovery followed by an OTP-authenticated WebSocket. Demo is the default; live requires an explicit acknowledgement gate. Application-managed API records expire after 24 hours. Written confirmation is still required for storage, redistribution, and transaction-specific use. |
+| Historical CSV use/retention | **OPERATOR CONFIRMED** | On 2026-08-06 the operator reported that Deriv support confirmed no separate licence is required to retain the historical data long term. This clears the former runtime/backtesting retention blocker, subject to preserving the support evidence and current provider terms. The operator also reports that Deriv confirmed redistribution and buyer-transfer rights; preserve the original support evidence. |
+| Historical CSV redistribution/transfer | **OPERATOR CONFIRMED** | The operator reports that Deriv confirmed transfer and redistribution rights; retain the original confirmation with any delivery record. |
+| Deriv API terms compliance | **CONDITIONAL** | The code uses REST account discovery followed by an OTP-authenticated WebSocket. Demo is the default; live requires an explicit acknowledgement gate. Application-managed API records expire after 24 hours. Retain the Deriv confirmation and review current terms for transaction-specific use. |
 | Third-party dependency licences | **CONDITIONAL** | The locked Rust graph contains 217 registry packages and no missing Cargo licence expression. See `THIRD_PARTY_LICENSES.md` and the machine-readable TSV. Preserve notices and have counsel review compound/copyleft expressions and distribution obligations. |
 | Code ownership/copyright | **DRAFT — SIGNATURE REQUIRED** | `LICENSE`, `COPYRIGHT`, and `AUTHORSHIP_DECLARATION.md` now record the proposed ownership and licence structure. The agreement has blank buyer, delivery, address, and signature fields and grants no effective buyer rights until completed and signed by both Parties. Independent chain-of-title and legal review remain required. |
 | Secrets | **ROTATION REQUIRED** | Local `.env` contains non-placeholder `DERIV_APP_ID` and `DERIV_PAT` values. Values were not copied into this audit. Git history is unavailable in this workspace, so prior commitment cannot be ruled out. `.gitignore` now excludes secret files; rotate/revoke before delivery. |
@@ -24,7 +25,7 @@ Audit date: 2026-08-03. This is an engineering due-diligence record, not legal a
 - `main.rs.orig` and `main.rs.codex-backup` are development snapshots. Review provenance and exclude them from a clean buyer package unless they are intentionally part of the source transfer.
 - Three zero-byte artefacts (`{`, `src/main.rs:69:7`, and `src/main.rs:81:7`) are not product assets and should be excluded from delivery.
 
-For every external dataset, obtain a record containing supplier, licence text/version, acquisition date, permitted purpose, retention limit, redistribution/transfer right, territory, deletion procedure, and evidence file. Without that record the dataset is non-transferable.
+For every external dataset, record the supplier, acquisition date, permitted purpose, retention terms, redistribution/transfer right, territory, deletion procedure, and evidence location. The operator's 2026-08-06 Deriv support confirmation permits this project to treat long-term retention as allowed; the dataset may be transferred for the confirmed use, with the original support evidence retained.
 
 ## Deriv API compliance controls
 
@@ -70,7 +71,7 @@ Excluded unless separately licensed/assigned in writing:
 
 1. Complete authoritative Git-history and CI secret scanning; rotate all discovered credentials.
 2. Complete the ownership declaration and delivery schedule, obtain legal review, and have both Parties sign the proprietary licence.
-3. Produce a signed dataset schedule with licence evidence or deliver no historical/API-derived data.
+3. Preserve the Deriv support confirmation in the dataset evidence record; retain the Deriv support confirmation before delivering historical data to a buyer.
 4. Review current Deriv terms and obtain written permissions needed for the transaction and deployment.
 5. Regenerate dependency notices from the final `Cargo.lock` and preserve required licence texts.
 6. Deliver a source-only archive using `.gitignore` exclusions, then verify the archive contains no `.env`, CSV, API records, logs, or credentials.

@@ -96,14 +96,30 @@ struct ContractOutcome {
 struct EnabledContractStrategy {
     digit_families_enabled: bool,
     random_mode: bool,
+    started_at: Instant,
+    advanced_families_delay: Duration,
     rotator: ContractTypeRotator,
 }
 
 impl EnabledContractStrategy {
     fn new(digit_families_enabled: bool, random_mode: bool) -> Self {
+        Self::with_advanced_families_delay(
+            digit_families_enabled,
+            random_mode,
+            advanced_families_activation_delay(),
+        )
+    }
+
+    fn with_advanced_families_delay(
+        digit_families_enabled: bool,
+        random_mode: bool,
+        advanced_families_delay: Duration,
+    ) -> Self {
         Self {
             digit_families_enabled,
             random_mode,
+            started_at: Instant::now(),
+            advanced_families_delay,
             rotator: ContractTypeRotator::new(),
         }
     }
@@ -115,16 +131,24 @@ impl EnabledContractStrategy {
                 reason: "only_enabled_family",
             };
         }
+        let advanced_families_active =
+            self.started_at.elapsed() >= self.advanced_families_delay;
         if self.random_mode {
             return StrategyDecision {
-                contract_type: random_contract_type(),
-                reason: "uniform_random",
+                contract_type: random_contract_type(advanced_families_active),
+                reason: if advanced_families_active {
+                    "uniform_random"
+                } else {
+                    "startup_core_families"
+                },
             };
         }
-        let (contract_type, reason) = self.rotator.next_type();
+        let (contract_type, reason) = self.rotator.next_type(advanced_families_active);
         StrategyDecision {
             contract_type,
-            reason: if initial {
+            reason: if !advanced_families_active {
+                "startup_core_families"
+            } else if initial {
                 "performance_rotation_initial"
             } else {
                 reason
@@ -185,6 +209,39 @@ mod interface_tests {
                 ContractType::Accumulator
             );
         }
+    }
+
+    #[test]
+    fn startup_uses_only_accumulator_and_over_under_for_three_hours() {
+        let delay = Duration::from_secs(3 * 60 * 60);
+        let mut strategy = EnabledContractStrategy::with_advanced_families_delay(true, false, delay);
+
+        let mut decision = strategy.initial_decision();
+        for _ in 0..20 {
+            assert!(matches!(
+                decision.contract_type,
+                ContractType::Accumulator | ContractType::OverUnder
+            ));
+            assert_eq!(decision.reason, "startup_core_families");
+            decision = strategy.after_outcome(ContractOutcome {
+                contract_type: decision.contract_type,
+                won: true,
+            });
+        }
+    }
+
+    #[test]
+    fn matches_diff_and_rise_fall_become_eligible_after_three_hours() {
+        let delay = Duration::from_secs(3 * 60 * 60);
+        let mut strategy = EnabledContractStrategy::with_advanced_families_delay(true, false, delay);
+        strategy.started_at = Instant::now() - delay;
+        strategy.rotator.record_result(ContractType::Accumulator, false);
+        strategy.rotator.record_result(ContractType::OverUnder, false);
+
+        assert_eq!(
+            strategy.initial_decision().contract_type,
+            ContractType::MatchesDiff
+        );
     }
 
     #[test]
