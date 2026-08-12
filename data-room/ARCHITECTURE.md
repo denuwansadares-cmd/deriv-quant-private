@@ -476,3 +476,67 @@ The platform fails closed on missing live acknowledgement/config/risk state, sta
 - Risk controls cannot guarantee fills, connectivity, capital preservation or prevent total loss.
 
 This describes the maintained implementation and every repository directory class present at this repository revision. Local ignored contents are described by role, not treated as deliverable evidence. Validated environment values can be stricter; `config.rs`, `.env.example`, CLI arguments and the effective container environment remain authoritative for each run.
+
+## 21. Current implementation reconciliation
+
+This section reconciles the architecture with the Rust-only executable layout introduced by the current revision.
+
+### Binary/process boundaries
+
+```mermaid
+flowchart LR
+  Caddy[Caddy TLS + Basic Auth] --> Platform[deriv_platform]
+  Platform -->|atomic command files| Risk[(DERIV_RISK_STATE_DIR)]
+  Supervisor[deriv_supervisor] -->|consume command files| Risk
+  Supervisor -->|one child| Bot[deriv_bot]
+  Bot --> Risk
+  Bot --> Journal[(DERIV_AUDIT_JOURNAL_DIR)]
+  Platform --> Journal
+  Watchdog[deriv_watchdog] --> Risk
+  History[deriv_history] --> Normalized[(normalized CSV + evidence)]
+  Ops[deriv_ops] --> Build[Cargo/Docker/release artifacts]
+```
+
+`deriv_supervisor` is the container PID 1 for the bot service. It atomically publishes `control-status.json`, remembers requested continuous demo mode, consumes one-shot demo/live/stop files, starts no more than one child, injects only saved stake/loss values, forwards termination, and archives a demo graceful-stop latch. It locates `deriv_bot` through `PATH`; local supervisor use must therefore place `target/release` on `PATH` or install the binaries together.
+
+`deriv_platform` embeds the HTML/CSS templates at compile time and renders current status in Rust. There is no browser JavaScript. JSON APIs remain available for automation. The Rust HTTP server is deliberately small: bounded concurrent connections, 16 KiB header cap, read/write timeouts, no-store responses, CSP, frame denial, MIME sniffing denial, referrer/permissions policy, peer-scoped emergency rate limiting, constant-time secret comparison, atomic state writes, and retained action audit.
+
+`deriv_history` replaces the former Python audit programs. `audit` verifies the exact ten-symbol CSV set, validates timestamp/epoch/finite price fields, detects units/order/duplicates/gaps, preserves price text, writes mode-0600 ascending normalized copies, hashes raw and normalized files, and emits audit/provenance JSON. `overlap` calculates exact timestamp intersections for all ten markets and the two five-market families, adds qualification restrictions, and produces Markdown evidence.
+
+`deriv_ops` replaces shell automation. `release-readiness` validates assets, secret exclusions, formatting, compilation, strict Clippy, all tests, live-feature compilation, deterministic fixture equality/checksum, and Compose configuration. `reproducible-build` performs two isolated release builds and byte-compares `deriv_platform`. `buyer-evaluate` executes the packaged-source engineering evaluation. `package-data-room` enforces a separately supplied reviewed licence and builds an allow-listed archive.
+
+### Compose trust and persistence topology
+
+| Service | Identity and responsibility | Persistent/read-only state |
+|---|---|---|
+| `bot` | `deriv_supervisor`, spawning `deriv_bot` | Read/write `deriv-risk`, `deriv-audit`, normalized history bind; read-only root FS |
+| `watchdog` | Independent heartbeat/process enforcement with shared PID namespace | Read/write `deriv-risk`; `KILL` capability only |
+| `dashboard` | `deriv_platform` on internal port 8080 | Read/write risk control state; read-only audit journal |
+| `caddy` | Public TLS, Basic Auth, operator/viewer authorization | Caddy certificate/config volumes; no trading credentials |
+
+Caddy exposes ports 80/443 and the dashboard is only `expose`d internally. The configured public address and ACME behavior in `Caddyfile` are deployment-specific and must be changed before deployment to another host. Caddy maps `Denu` to operator controls and `Buyer` to read-only access. `.dashboard.env` supplies password hashes and upstream operator/CSRF values; its operator values must exactly match `DERIV_DASHBOARD_TOKEN` and `DERIV_DASHBOARD_CSRF_TOKEN` supplied to the dashboard service. All secret files are ignored.
+
+### Exhaustive configuration groups
+
+Runtime bootstrap: `DERIV_MODE`, `DERIV_SYMBOLS`, `HISTORY_PATH`, `DERIV_APP_ID`, `DERIV_ACCESS_TOKEN`, legacy `DERIV_PAT`/`DERIV_PAT_TOKEN`, `DERIV_RANDOM_SEED`, `DEMO_DURATION_SECS`, `DERIV_ENABLE_LIVE_TRADING`.
+
+Strategy/runtime policy: `DERIV_RISE_FALL_DURATION_MINUTES`, `DERIV_ADVANCED_FAMILIES_ACTIVATION_DELAY_SECS` and legacy `DERIV_RISE_FALL_ACTIVATION_DELAY_SECS`, `STRATEGY_QUALIFICATIONS_PATH`.
+
+Mandatory network risk: `DERIV_MAX_STAKE_MINOR`, `DERIV_SESSION_LOSS_LIMIT_BPS`, `DERIV_MAX_OPEN_EXPOSURE_BPS`, `DERIV_MAX_OPEN_CONTRACTS=1`, `DERIV_MAX_CONSECUTIVE_LOSSES`, `DERIV_LOSS_COOLDOWN_BASE_SECS`.
+
+Storage/control: `DERIV_RISK_STATE_DIR`, `DERIV_AUDIT_JOURNAL_DIR`, `DERIV_API_RECORDS_DIR`, `DERIV_DASHBOARD_BIND`, `DERIV_DASHBOARD_TOKEN`, `DERIV_DASHBOARD_CSRF_TOKEN`, `DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX`, `DERIV_DASHBOARD_AUDIT_RETENTION_SECS`, `DERIV_WATCHDOG_STALE_SECS`, `DERIV_WATCHDOG_STARTUP_GRACE_SECS`, `RUST_LOG`.
+
+Simulation: `SIM_PROPOSAL_TTL_MS`, `SIM_LATENCY_MS`, `SIM_STALE_QUOTE_MS`, `SIM_PAYOUT_BPS`, `SIM_FEE_BPS`, `SIM_SLIPPAGE_BPS`, `SIM_RATE_LIMIT_PER_SEC`, `SIM_DISCONNECT_PPM`, `SIM_REJECT_PPM`, `SIM_LOST_BUY_RESPONSE_PPM`, `SIM_SELL_FAILURE_PPM`, `SIM_MISSING_TICK_PPM`, `SIM_OUT_OF_ORDER_PPM`, `SIM_MAX_SELL_RETRIES`, `SIM_ACCU_GROWTH_BPS`, `SIM_CONTRACT_DURATION_TICKS`, `SIM_SELL_BID_DISCOUNT_BPS`, `SIM_EXPECT_REPLAY_HASH`.
+
+Packaging: `FINAL_BUYER_LICENCE`, `FINAL_BUYER_LICENCE_REVIEWED=YES`.
+
+### Control-plane failure semantics
+
+- Missing, short, equal, or expired dashboard secrets reject every write.
+- Viewer requests are read-only at Caddy; the Rust server independently requires operator headers.
+- Risk configuration is rejected while heartbeat is fresh.
+- Demo/live start is rejected while an emergency or stop-state latch exists.
+- Live start additionally requires idle state, saved stake/loss files, explicit warning acknowledgement, and exact typed confirmation.
+- The runtime independently requires the live Cargo feature and exact environment acknowledgement; a control-file request cannot bypass bootstrap gates.
+- Emergency stop is durable. The bot heartbeat/runtime safety tasks observe persistent stop state; operators must verify broker exposure and state before restart.
+- Dashboard telemetry is derived from redacted journal records and is evidence, not a profitability promise.

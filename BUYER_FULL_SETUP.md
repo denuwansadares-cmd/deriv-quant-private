@@ -1,168 +1,263 @@
 # Buyer Full Setup Guide
 
-## What this system gives you
+This is the end-to-end setup and operating checklist for the current Rust-only executable platform. Complete simulation first, then demo. Live mode is optional, feature-gated, and never implied by a successful demo.
 
-This package provides a structured way to build, simulate, evaluate, and operate the trading system using your own Deriv account and licensed market data. It includes deterministic simulation, demo-mode testing, configurable risk limits, audit records, a local dashboard, a watchdog, and an emergency-stop mechanism. These controls are designed to help a buyer evaluate the software methodically before deciding whether any real-money use is appropriate.
+## 1. Requirements
 
-The seller reports having used the system in real-money trading and having achieved profitable results during that period. That statement describes the seller's personal historical experience; it is not an independently audited performance record, a promise, or a guarantee that another user will obtain the same result. Market conditions, configuration, execution, account settings, and user decisions can materially change outcomes.
-
-> **Important risk notice:** Trading involves risk and can result in partial or total loss of the money committed. Past performance does not guarantee future results. The software is a technical tool, not financial advice or a guaranteed-income product. Use simulation and a controlled demo account first, choose conservative limits, and obtain independent financial, technical, and legal advice where appropriate. The buyer remains responsible for credentials, configuration, operation, trading decisions, and compliance with applicable rules. Nothing in this guide excludes any responsibility that cannot lawfully be excluded.
-
-## 1. Requirements and delivery check
-
-- 64-bit Linux (Ubuntu or Debian recommended)
-- Git, build tools, `pkg-config`, and OpenSSL development files
-- Stable Rust and Cargo
-- A buyer-owned Deriv app ID, bearer token, and Options demo account
-- Buyer-owned or properly licensed CSV history
+- Linux host or VM; Docker Engine with Compose v2 for the recommended deployment.
+- Rust stable, Cargo, Git, `sha256sum`, `tar`, and `openssl` for native development and secret generation.
+- Optional release tools: Docker and `cargo-cyclonedx`.
+- Buyer-owned Deriv app ID and token for demo/live only.
+- History that the buyer is permitted to store and use.
+- For public dashboard TLS: DNS/IP routing, ports 80/443, and deployment-specific Caddy configuration.
 
 ```bash
-sudo apt update
-sudo apt install -y build-essential pkg-config libssl-dev ca-certificates curl git
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+git status --short
+cargo --version
+docker compose version
+cargo run --locked --bin deriv_ops -- release-readiness
 ```
 
-The delivery must not contain `.env`, seller tokens, `.risk/`, `data/api-records/`, or private history files.
+A clean evaluation must pass formatting, all-target compilation, strict Clippy, 103+ tests, live-feature compilation without execution, deterministic fixture verification, and Compose validation. Test totals can legitimately increase.
 
-## 2. Safe simulation without credentials
+## 2. Files and binaries
+
+| Binary | Role |
+|---|---|
+| `deriv_bot` | simulation/demo/live runtime |
+| `deriv_supervisor` | owns one runtime child and consumes dashboard control files |
+| `deriv_platform` | Rust-rendered dashboard and API |
+| `deriv_watchdog` | heartbeat/process safety monitor |
+| `deriv_history` | history normalization and synchronized-coverage evidence |
+| `deriv_ops` | verification, reproducibility, buyer evaluation, packaging |
+| `generate_synthetic_fixture` | deterministic fixture generator |
+
+Secrets belong in ignored `.env` and `.dashboard.env`; durable runtime safety state belongs in `.risk` or the `deriv-risk` volume. Never commit either.
+
+## 3. First safe simulation
+
+Simulation does not need Deriv credentials and does not send orders.
 
 ```bash
-cd /absolute/path/to/deriv_bot
-test ! -f .env
-test ! -d data/api-records
-cargo build --locked
-cargo test --locked --no-default-features
+cargo build --locked --no-default-features --bins
+cargo test --locked --all-targets
 
 DERIV_RANDOM_SEED=20260803 \
-SIM_EXPECT_REPLAY_HASH=44effca3edc5f553 \
+DERIV_AUDIT_JOURNAL_DIR=/tmp/deriv-simulation-audit \
 cargo run --locked --no-default-features --bin deriv_bot -- \
-  --mode simulation --symbols R_100 --history fixtures/synthetic
+  --mode simulation \
+  --symbols R_100 \
+  --history fixtures/synthetic
 ```
 
-Simulation does not connect to the broker. The included fixture tests system mechanics only; it does not demonstrate profitability. If the replay hash does not match, inspect the revision, lockfile, random seed, and input data before continuing.
+Repeat with the same seed/input to verify deterministic behavior. Optional simulation controls include proposal/stale/latency timing, payout/fee/slippage, rate limits, disconnect/reject/lost-response/sell-failure/missing/out-of-order fault rates, retry count, ACCU growth, duration, sell discount, and `SIM_EXPECT_REPLAY_HASH`; see README’s canonical environment table.
 
-## 3. Configure the buyer's Deriv access and `.env`
+## 4. Audit licensed history
 
-The buyer must use their own app registration and token. At runtime, the application selects an active demo account and obtains a one-time WebSocket OTP. It obtains a fresh OTP after reconnecting. Grant only the minimum required scopes. An OAuth callback or token-refresh service is not included in this repository.
+The audit expects exactly the ten configured symbol CSV files. Originals are read; normalized copies and evidence are written separately.
 
-Official documentation: [authentication](https://developers.deriv.com/docs/intro/authentication/), [OAuth](https://developers.deriv.com/docs/intro/oauth/), [Options accounts](https://developers.deriv.com/docs/options/get-accounts/), and [WebSocket](https://developers.deriv.com/docs/options/websocket/).
+```bash
+cargo run --locked --bin deriv_history -- audit \
+  --raw /absolute/path/to/raw-history \
+  --normalized "$PWD/history-normalized" \
+  --report "$PWD/reports/history/dataset-audit.json" \
+  --manifest "$PWD/reports/history/provenance-manifest.json"
+
+cargo run --locked --bin deriv_history -- overlap \
+  --normalized "$PWD/history-normalized" \
+  --audit "$PWD/reports/history/dataset-audit.json" \
+  --manifest "$PWD/reports/history/provenance-manifest.json" \
+  --markdown "$PWD/reports/history/DATASET_AUDIT.md"
+```
+
+Review malformed/non-finite rows, UTC mismatches, ordering, duplicates, gaps, hashes, licence/transfer restrictions, and exact synchronized intersections. Bounding-range overlap is not synchronized evidence. Never package raw history without explicit transfer permission.
+
+## 5. Configure native demo mode
 
 ```bash
 cp .env.example .env
 chmod 600 .env
-mkdir -p .risk data/api-records data/audit /absolute/path/to/licensed/history
-chmod 700 .risk data/api-records data/audit
 ```
+
+Edit `.env` with a buyer-owned app ID/token, `DERIV_MODE=demo`, an absolute `HISTORY_PATH`, and all six explicit network-risk variables:
 
 ```dotenv
 DERIV_APP_ID=BUYER_OWN_APP_ID
 DERIV_ACCESS_TOKEN=BUYER_OWN_ACCESS_TOKEN
 DERIV_MODE=demo
-HISTORY_PATH=/absolute/path/to/licensed/history
+DERIV_SYMBOLS=R_10,1HZ10V,R_25,1HZ25V,R_50,1HZ50V,R_75,1HZ75V,R_100,1HZ100V
+HISTORY_PATH=/absolute/path/to/history-normalized
+DERIV_MAX_STAKE_MINOR=100
+DERIV_SESSION_LOSS_LIMIT_BPS=100
+DERIV_MAX_OPEN_EXPOSURE_BPS=100
+DERIV_MAX_OPEN_CONTRACTS=1
+DERIV_MAX_CONSECUTIVE_LOSSES=3
+DERIV_LOSS_COOLDOWN_BASE_SECS=60
 DERIV_RISK_STATE_DIR=.risk
-DERIV_API_RECORDS_DIR=data/api-records
 DERIV_AUDIT_JOURNAL_DIR=data/audit
+DERIV_API_RECORDS_DIR=data/api-records
+DEMO_DURATION_SECS=0
 RUST_LOG=info
 ```
 
-Review every risk value in `.env.example`. For USD, `DERIV_MAX_STAKE_MINOR=100` means USD 1.00, while 100 basis points means 1%. `DERIV_MAX_OPEN_CONTRACTS=1` is mandatory. Never commit `.env`, and never place a token or OTP in logs, screenshots, or messages.
+Minor units: USD 100 = USD 1.00. Basis points: 100 = 1%. Reviewed ranges are stake 100–10,000; session loss 1–2,000 bps; exposure 1–1,000 bps; one open contract; consecutive losses 1–10; cooldown base 10–3,600 seconds. These controls limit risk but cannot prevent every loss.
 
-## 4. Run the first demo test
-
-Start with a 15-minute, single-symbol test:
+Run directly:
 
 ```bash
-DEMO_DURATION_SECS=900 \
 cargo run --locked --release --bin deriv_bot -- \
-  --mode demo --symbols R_100 --history /absolute/path/to/licensed/history
+  --mode demo --history "$HISTORY_PATH"
 ```
 
-Verify account selection, incoming ticks, risk-approved demo actions, and audit metadata. Use `Ctrl+C` for a graceful stop. Confirm that logs and audit records contain no secrets. `DEMO_DURATION_SECS=0` enables continuous demo operation, but complete finite soak tests first.
+Verify account type is demo, selected symbols are intended, heartbeat/journal files appear, no secrets appear in logs, and shutdown drains/reconciles exposure.
 
-## 5. Dashboard, watchdog, and emergency stop
+## 6. Native supervisor, dashboard, and watchdog
+
+Build installed-together binaries. The supervisor resolves `deriv_bot` through `PATH`.
 
 ```bash
-cargo build --locked --release --bin deriv_platform --bin deriv_watchdog
-export DERIV_DASHBOARD_TOKEN='random-32-plus-character-token'
-export DERIV_DASHBOARD_CSRF_TOKEN='different-random-32-plus-token'
-export DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX='future-unix-time'
-cargo run --locked --release --bin deriv_platform
+cargo build --locked --release --features live-trading --bins
+export PATH="$PWD/target/release:$PATH"
+export DERIV_RISK_STATE_DIR="$PWD/.risk"
+export DERIV_AUDIT_JOURNAL_DIR="$PWD/data/audit"
+export HISTORY_PATH="$PWD/history-normalized"
+deriv_supervisor
 ```
 
-The dashboard listens on `127.0.0.1:8080` by default. Do not bind it directly to a public network. Use a TLS reverse proxy and firewall controls for remote access.
-
-In the packaged deployment, Caddy is the only public entry point. It terminates HTTPS, requires Basic authentication, and injects separate short-lived operator and CSRF credentials only into matched control requests. The dashboard remains private and has no broker credentials. From the authenticated UI, an operator can save the idle-session stake/loss profile, start demo, explicitly acknowledge and start guarded live mode, request a graceful stop, or engage the persistent emergency stop. Live mode still requires all compile-time, runtime, state and risk gates; a warning checkbox alone cannot bypass them.
-
-While the bot is running, open another terminal and use the same `DERIV_RISK_STATE_DIR`:
+In separate terminals:
 
 ```bash
-cargo run --locked --release --bin deriv_watchdog
-cargo run --locked --release --bin deriv_watchdog -- --check
+export DERIV_RISK_STATE_DIR="$PWD/.risk"
+export DERIV_AUDIT_JOURNAL_DIR="$PWD/data/audit"
+export DERIV_DASHBOARD_BIND=127.0.0.1:8080
+export DERIV_DASHBOARD_TOKEN='at-least-32-random-characters-operator'
+export DERIV_DASHBOARD_CSRF_TOKEN='different-32-random-characters-csrf'
+export DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX="$(($(date +%s)+86400))"
+deriv_platform
 ```
 
-Manual emergency stop:
-
 ```bash
-touch .risk/emergency.stop
+export DERIV_RISK_STATE_DIR="$PWD/.risk"
+export DERIV_WATCHDOG_STALE_SECS=15
+export DERIV_WATCHDOG_STARTUP_GRACE_SECS=30
+deriv_watchdog
+# one-shot probe:
+deriv_watchdog --check
 ```
 
-Do not delete persistent risk files until you have reconciled any open contract, the provider portfolio, the audit records, and the recorded exposure.
+Open `http://127.0.0.1:8080`. The HTML is rendered by Rust, refreshes every five seconds, and uses no JavaScript. Direct write API requests require bearer, CSRF, role, and expiry. Risk configuration additionally uses `X-Stake-Minor` and `X-Loss-Limit-Bps`; live start uses `X-Live-Risk-Acknowledged: true` and `X-Live-Confirmation: LIVE`.
 
-## 6. Docker Compose
+## 7. Recommended Docker/Caddy deployment
 
-`docker-compose.yml` may contain seller-machine absolute history paths and stricter risk overrides. Replace those paths with buyer-controlled paths, then review `.env`, filesystem permissions, and the effective risk configuration.
+First replace the deployment-specific public address in `Caddyfile`. Create ignored secret files:
 
 ```bash
-openssl rand -hex 32
-openssl rand -hex 32
-date -d '+4 hours' +%s
-docker compose config
+cp .env.example .env
+chmod 600 .env
+operator_token="$(openssl rand -hex 32)"
+csrf_token="$(openssl rand -hex 32)"
+expiry="$(( $(date +%s) + 86400 ))"
+printf 'DERIV_DASHBOARD_TOKEN=%s\nDERIV_DASHBOARD_CSRF_TOKEN=%s\nDERIV_DASHBOARD_TOKEN_EXPIRES_UNIX=%s\n' \
+  "$operator_token" "$csrf_token" "$expiry" >> .env
+
+operator_hash="$(docker run --rm caddy:2.11-alpine caddy hash-password --plaintext 'CHANGE_OPERATOR_PASSWORD')"
+buyer_hash="$(docker run --rm caddy:2.11-alpine caddy hash-password --plaintext 'CHANGE_VIEWER_PASSWORD')"
+printf 'DASHBOARD_ADMIN_HASH=%s\nDASHBOARD_BUYER_HASH=%s\nDASHBOARD_OPERATOR_TOKEN=%s\nDASHBOARD_OPERATOR_CSRF=%s\n' \
+  "$operator_hash" "$buyer_hash" "$operator_token" "$csrf_token" > .dashboard.env
+chmod 600 .dashboard.env
+```
+
+Do not paste real passwords into shell history on a shared machine; use a protected secret manager or interactive procedure in production. Ensure the two Caddy upstream secrets exactly equal the dashboard secrets. Update the two host history bind paths in `docker-compose.yml` for the deployment host.
+
+```bash
+docker compose config --quiet
 docker compose build
-docker compose up
-docker compose logs -f --tail=200 bot watchdog dashboard
+docker compose up -d
+docker compose ps
+docker compose logs -f --tail=200 bot watchdog dashboard caddy
 ```
 
-Use `docker compose down` to stop the services. Do not use `docker compose down -v` for routine shutdown because it deletes persistent risk and audit volumes.
+Topology: Caddy exposes 80/443; dashboard is internal only; bot/supervisor and watchdog share durable risk state; dashboard reads the audit journal and writes control state; all application containers use read-only root filesystems, dropped capabilities, resource limits, and no-new-privileges.
 
-## 7. Troubleshooting
+Routine stop:
 
-| Error | What to check |
-|---|---|
-| Missing app ID or token | `.env`, buyer credentials, and token expiry |
-| Missing `HISTORY_PATH` | An absolute, writable directory or `--history` |
-| No active Options accounts | An active demo/virtual Options account |
-| Missing risk variable | Every risk variable listed in `.env.example` |
-| Dashboard unauthorized | Two distinct 32+ character tokens and a future expiry time |
-| Watchdog failure | Bot status, matching risk directory, heartbeat, and stop file |
-| Replay hash mismatch | Revision, fixture, seed, and lockfile |
+```bash
+docker compose down
+```
 
-`HISTORY_PATH` and `DERIV_API_RECORDS_DIR` must not point to the same directory. Use only data for which you have documented permission. See `BACKTESTING.md`, `PRODUCT_API.md`, and `SECURITY_EVIDENCE.md` for more detail.
+Never use `docker compose down -v` as a routine stop: it deletes risk, audit, and Caddy volumes.
 
-## 8. Live mode and buyer acceptance
+## 8. Operator and viewer behavior
 
-Live mode is excluded from the default build. Enabling it requires both the compile-time feature and the exact acknowledgement shown below:
+Caddy Basic Auth identity `Denu` is the operator and may reach POST controls. `Buyer` is read-only and receives 403 for control/emergency routes. Change these deployment-specific usernames if required and update the Caddy matchers consistently.
+
+Before any start: inspect saved stake/loss values, supervisor idle state, emergency/stop latches, broker exposure, token expiry, history mount, and account type. Use graceful stop first. Emergency stop is a persistent safety latch, not a normal pause button.
+
+## 9. Safety-state recovery
+
+If startup reports a stop latch, stale runtime, or exposure pending:
+
+1. Stop supervisor/bot without deleting volumes.
+2. Independently inspect the Deriv account and reconcile every open contract.
+3. Preserve `.risk`/`deriv-risk` and journal evidence.
+4. Determine whether the stop came from risk, watchdog, operator action, disconnect uncertainty, or process identity mismatch.
+5. Record the review and authorization.
+6. Only then archive/clear the specific latch using the approved operating procedure.
+7. Restart in demo and verify heartbeat, portfolio, and control status before considering live mode.
+
+Never delete `.risk`, `runtime.lock`, `open-exposure.json`, `stop-state.json`, or named volumes merely to force a restart.
+
+## 10. Live mode
+
+Live mode requires all of the following: buyer acceptance, legal/provider review, buyer-owned real account/token, reviewed history and qualifications, completed demo soak, reconciled risk state, `live-trading` build feature, exact environment acknowledgement, saved risk limits, idle supervisor, no latch/exposure uncertainty, and explicit dashboard warning/typed confirmation.
+
+Direct runtime example:
 
 ```bash
 DERIV_ENABLE_LIVE_TRADING=I_UNDERSTAND_REAL_MONEY \
 cargo run --locked --release --features live-trading --bin deriv_bot -- \
-  --mode live --history /absolute/path/to/licensed/history
+  --mode live --history "$HISTORY_PATH"
 ```
 
-Enabling this path does not prove production readiness, profitability, legality, or safety. Do not use it until the buyer has completed independent evaluation and provided separate written approval.
+A successful build, test, backtest, simulation, demo, or dashboard start is not live approval and is not evidence of profitability.
 
-For ownership transfer, replace the seller cloud account, static IP/domain, DNS, TLS state, Basic-auth hash, dashboard operator token, CSRF token, expiry, Deriv app ID and Deriv access token with buyer-controlled values. Keep port 8080 private, expose only ports 80/443 through the proxy, revoke all seller access, and record the effective Compose configuration and credential-rotation date in the acceptance evidence. Start with demo after transfer; live activation remains a separate buyer decision.
+## 11. Verification and release workflows
 
-- [ ] The delivery contains no seller secrets or private records.
-- [ ] Buyer-owned app ID, token, and demo account are in use.
-- [ ] Locked build/tests and deterministic simulation pass.
-- [ ] Dataset provenance/licensing and risk approval are documented.
-- [ ] Finite demo run, log-redaction check, and emergency-stop test pass.
-- [ ] Dashboard, watchdog, backup, retention, and incident ownership are verified.
-- [ ] Live mode remains disabled until separate written approval is provided.
-- [ ] The buyer has read and accepted the risk notice and product limitations.
+```bash
+cargo fmt --all -- --check
+cargo check --locked --all-targets
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked --all-targets
+cargo check --locked --features live-trading --bin deriv_bot
+cargo run --locked --bin deriv_ops -- release-readiness
+cargo run --locked --bin deriv_ops -- reproducible-build
+```
 
-The final acceptance record should include the revision, archive SHA-256, operating system and toolchain, test results, replay hash, dataset licences, selected risk profile, known limitations, and support dates. Documents in `legal/drafts/` are drafts only and should be reviewed by qualified legal counsel before use.
+Buyer-package evaluation uses `deriv_ops buyer-evaluate` from the packaged layout. Data-room packaging requires `cargo-cyclonedx`, a separate lawyer-reviewed licence, `FINAL_BUYER_LICENCE`, and `FINAL_BUYER_LICENCE_REVIEWED=YES`.
 
-## A responsible way to evaluate the product
+## 12. Troubleshooting
 
-The strongest evidence of value is a process the buyer can reproduce. Build the locked revision, run its tests, reproduce the simulation hash, operate it in demo mode under conservative limits, inspect the audit trail, and test the emergency stop. Only then should the buyer decide whether the system fits their technical capability, risk tolerance, and intended use.
+- Missing app ID/token: network modes require buyer-owned credentials; simulation does not.
+- Risk variable error: all six network-risk values must be explicit and within reviewed bounds.
+- History error: use an existing absolute file/directory; do not point `HISTORY_PATH` at raw API-record storage.
+- Dashboard 401: verify token/CSRF length, difference, exact values, role header, and future expiry.
+- Viewer 403: expected for POST controls.
+- Caddy failure: verify public address/DNS, 80/443 reachability, password-hash quoting, and `.dashboard.env`.
+- Supervisor cannot spawn: put the directory containing `deriv_bot` on `PATH`.
+- Watchdog stale: verify shared PID namespace/risk volume, startup grace, heartbeat age, and runtime identity before reset.
+- Live rejected: verify Cargo feature, exact acknowledgement, real account selection, idle state, saved limits, and no safety latch.
+- Reproducible build mismatch: preserve both artifacts and investigate toolchain/environment before release.
+
+## 13. Final acceptance checklist
+
+- [ ] Buyer controls credentials, app registration, infrastructure, history rights, and capital.
+- [ ] Simulation and deterministic replay verified.
+- [ ] History audit/provenance/overlap reviewed.
+- [ ] Demo account identity confirmed before every network run.
+- [ ] Six explicit risk settings independently approved.
+- [ ] Risk/audit volumes backed up and retention policy documented.
+- [ ] Operator/viewer access tested; secrets rotated and expiry tested.
+- [ ] Graceful stop, emergency latch, watchdog stale path, and recovery procedure rehearsed.
+- [ ] Release-readiness and reproducible-build pass on the exact snapshot.
+- [ ] Legal licence, third-party notices, SBOM, provider terms, and data-transfer rights reviewed.
+- [ ] No profitability, win-rate, production-readiness, or future-return claim inferred from engineering evidence.
