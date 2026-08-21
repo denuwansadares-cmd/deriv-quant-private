@@ -260,7 +260,7 @@ Write controls require distinct 32+ character bearer and CSRF tokens, operator r
 | Raw API records | `DERIV_API_RECORDS_DIR` | Capture off by default; 24-hour expiry |
 | Decision journal | `DERIV_AUDIT_JOURNAL_DIR` | Append-only redacted JSONL; stable hashed IDs |
 | Risk state | `DERIV_RISK_STATE_DIR` | Durable shared safety state |
-| Evidence | `reports/history` | Audit, checksums, provenance manifest |
+| Private generated evidence | `reports/private/history` | Ignored audit, checksums, and provenance output; not submitted |
 
 Journal initialization records mode, markets, dataset checksum, seed and context. Events cover transitions, decisions/rejections, execution, recovery, latency, breakers and P&L. Audit scripts check raw-normalized provenance, overlap/duplicates, chronology, quality and manifests.
 
@@ -326,7 +326,7 @@ The current saved profile is $1 stake and 1% session loss. While idle, the authe
 | `config/*` | Qualifications/evidence key |
 | `schemas/deriv/*` | Pinned provider contract |
 | `scripts/*` | Provenance/history/build tooling |
-| `reports/history/*` | Dataset evidence |
+| `reports/private/history/*` | Ignored private generated dataset evidence; not submitted |
 | `data-room/*` | Buyer architecture/threat/capability/evidence package |
 
 Module files are currently `include!`d into one crate scope; `src/modules.rs` records the conceptual module set.
@@ -423,8 +423,8 @@ The following inventory distinguishes maintained source from local/generated sta
 | `data-room/` | Maintained due diligence | Architecture, capabilities, provenance, threat model, evidence manifest, roadmap/SLA, index, evaluator and guarded packaging script |
 | `fixtures/synthetic/` | Maintained deterministic fixture | Synthetic `R_100` CSV fixture plus SHA-256 sidecar used to verify generator and replay; intentionally allow-listed despite the general CSV ignore rule |
 | `history-normalized/` | Local derived dataset | Writable normalized per-symbol CSV history used by Compose; large, ignored, non-transferable by default and distinct from raw read-only history |
-| `legal/drafts/` | Maintained legal drafts | Ownership, acceptance, notice, licence and support templates; non-operative until review/signature, and rejected as final licences by the packager |
-| `reports/history/` | Maintained evidence summaries | Dataset audit, machine-readable audit and provenance manifest; evidence describes audited inputs, not ownership or profitability |
+| Transaction documents | Handled separately during due diligence; historical drafts are not part of the current submission |
+| `reports/private/history/` | Ignored private output | Generated dataset audit and provenance output; not part of source submission |
 | `reports/private/` | Optional private output | Local reports/scanner results; ignored and excluded from delivery |
 | `schemas/deriv/` | Maintained integration contract | Pinned local contract-family metadata used by schema tests; not a live provider-schema fetch |
 | `scripts/` | Maintained engineering tools | History audit, overlap analysis and native Rust operations CLI |
@@ -436,7 +436,7 @@ The following inventory distinguishes maintained source from local/generated sta
 
 | Path | Responsibility |
 |---|---|
-| `Cargo.toml`, `Cargo.lock` | Rust package, four explicit binaries, feature gate, dependencies and locked resolution |
+| `Cargo.toml`, `Cargo.lock` | Rust package, seven explicit binaries, feature gate, dependencies and locked resolution |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Multi-stage live-capable image; Caddy, private dashboard, supervised bot and watchdog topology; persistent risk/audit/TLS volumes; build-context exclusions |
 | `.env.example`, `.gitignore` | Safe configuration template and local/secret/generated-state exclusion policy |
 | `README.md` | Product/operator overview, configuration, commands and project map |
@@ -446,7 +446,7 @@ The following inventory distinguishes maintained source from local/generated sta
 | `SECURITY_EVIDENCE.md` | Verified checks, open checks and release gates |
 | `CLAIMS.md` | Allowed, limited, planned and prohibited product claims |
 | `AUDIT.md` | Data/API/IP/transfer engineering audit and closing actions |
-| `AUTHORSHIP_DECLARATION.md`, `COPYRIGHT`, `LICENSE` | Current root legal/ownership artifacts; the packager still requires a separate reviewed final buyer licence |
+| `AUTHORSHIP_DECLARATION.md`, `COPYRIGHT`, `SUBMISSION_SCOPE.md` | Authorship draft, copyright notice, and non-contractual appraisal scope; transaction rights are handled separately |
 | `THIRD_PARTY_LICENSES.md`, `THIRD_PARTY_LICENSES.tsv` | Human- and machine-readable dependency notices |
 | `deriv_bot.cdx.json` | CycloneDX software bill of materials |
 
@@ -454,7 +454,7 @@ The following inventory distinguishes maintained source from local/generated sta
 
 `generate_synthetic_fixture` deterministically creates the test CSV. `deriv_history audit` validates chronology, quality, hashes and provenance; `deriv_history overlap` measures cross-symbol timestamp overlap. `deriv_ops reproducible-build` builds twice in isolated target directories and compares binaries. `deriv_ops buyer-evaluate` formats/tests, regenerates and compares the fixture, checks its checksum, reproduces the pinned simulation hash, compile-checks the live feature without enabling live execution, optionally audits dependencies, and verifies reproducible builds.
 
-`deriv_ops package-data-room` is a guarded release assembler. It requires a separately supplied lawyer-reviewed final licence, rejects the root/superseded/draft licence, stages an allow-listed source/evidence/legal/scripts set, creates a complete SHA-256 manifest, and emits a compressed archive plus checksum under `buyer-data-room/`. It deliberately excludes credentials, `.env`, local history, runtime state, raw API records, audit logs, backups, private reports, Git metadata and build output. Media placeholders remain explicit until buyer-verifiable recordings are supplied.
+`deriv_ops package-data-room` is a guarded release assembler. It requires a separately supplied final transaction document whose review status is explicitly confirmed by the operator, rejects draft or superseded documents, stages an allow-listed source/evidence/legal/scripts set, creates a complete SHA-256 manifest, and emits a compressed archive plus checksum under `buyer-data-room/`. It deliberately excludes credentials, `.env`, local history, runtime state, raw API records, audit logs, backups, private reports, Git metadata and build output. Media placeholders remain explicit until buyer-verifiable recordings are supplied.
 
 ## 19. Verification and failure policy
 

@@ -24,7 +24,7 @@ This repository does not provide legal advice.
 - **Decision journal:** metadata-only JSON Lines records cover version/config/dataset/seed context, normalized identifiers, model decisions, state transitions, order dispatch/results, latency, recovery action, and P&L calculations. The journal is conservatively purged after 24 hours pending legal review.
 - **Balance-derived stake policy:** the risk engine derives its base stake from 1% of the verified demo balance, clamps it to an absolute $100 maximum and $1 minimum, and reduces it monotonically with signal risk and drawdown. API stake values are produced from integer minor units.
 - **Local CSV ingestion and market ranking:** a CSV loader and ranking logic are implemented and unit-tested with synthetic fixtures. Operator-held Deriv history may be retained and used locally under the reported support confirmation; dataset currency, completeness, and transferability are separate questions.
-- **Verification baseline:** formatting validation, strict Clippy, `cargo check --all-targets`, and all 98 tests pass as of 2026-08-10. No test is ignored. Synthetic and engineering tests are not evidence that a locked holdout evaluation has been completed.
+- **Verification baseline:** formatting validation, strict Clippy, a locked all-target build, and all 104 tests pass as of 2026-08-21. No test failed or was ignored. Synthetic and engineering tests are not evidence that a locked holdout evaluation has been completed.
 
 These statements describe code paths and automated tests only. They do not establish profitability, production safety, regulatory compliance, or suitability for real-money trading.
 

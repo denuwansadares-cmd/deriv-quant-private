@@ -28,7 +28,7 @@ The acquisition value is in a substantial, documented engineering base that a bu
 | Resilient execution | Proposal/buy/sell lifecycle, reconnect handling, uncertain-buy reconciliation, and sell retry behavior |
 | Deterministic evaluation | Seeded replay, virtual time, replay hashes, fault injection, and detailed hypothetical metrics |
 | Operational controls | Authenticated local dashboard, CSRF protection, action audit, heartbeat, and independent watchdog |
-| Due-diligence package | Architecture, capability matrix, SBOM, third-party notices, security evidence, onboarding, and legal drafts |
+| Due-diligence package | Architecture, capability matrix, SBOM, third-party notices, security evidence, onboarding, and submission scope |
 
 The code is deliberately transparent about what has and has not been proven. A buyer can reproduce engineering checks, inspect every risk gate, and qualify strategies with their own lawfully obtained datasets instead of relying on undocumented marketing claims.
 
@@ -38,7 +38,7 @@ The code is deliberately transparent about what has and has not been proven. A b
 - **Inspectable before reliance:** core behavior is in readable Rust source with automated tests, explicit configuration, deterministic replay, and decision journals.
 - **Commercially adaptable:** suitable for further productization, branding, integration, strategy research, or internal deployment, subject to the final agreement and applicable third-party terms.
 - **Built-in operational safeguards:** real-money execution requires both a compile-time feature and an exact runtime acknowledgement.
-- **Structured handover:** onboarding, architecture, capability mapping, security evidence, data provenance, SBOM material, third-party notices, legal drafts, and evaluation automation are organized in the repository.
+- **Structured handover:** onboarding, architecture, capability mapping, security evidence, data provenance, SBOM material, third-party notices, submission scope, and evaluation automation are organized in the repository. Transaction documents are handled separately during due diligence.
 - **Evidence available for controlled review:** the seller reports six months of demo-account testing and prior live-account use. Supporting broker records should be reviewed through a controlled, appropriately redacted due-diligence process. This is seller-reported history—not an independently verified duration, performance claim, or promise of future results.
 
 ### Ideal buyer
@@ -61,7 +61,7 @@ At the current workspace revision:
 - All maintained executable implementation is Rust, including runtime, supervision, release operations, history auditing, and in-source tests.
 - HTML and CSS remain presentation templates; JSON, Markdown, YAML, and TOML remain interoperable data, documentation, and configuration formats.
 - Trading/research core: 2,589 lines across models, strategy, qualification, mathematics, risk engines, and backtesting.
-- Automated test result: 103 passed, 0 failed, 0 ignored across the maintained Rust targets (verified 2026-08-13).
+- Automated test result: 104 passed, 0 failed, 0 ignored across the maintained Rust targets (verified 2026-08-21).
 - `cargo check --all-targets`, formatting validation, and strict Clippy with warnings denied pass locally.
 
 Line counts describe implementation scope, not software quality, profitability, or market value. The reproducible checks and disclosed limitations are the more important buyer evidence.
@@ -510,12 +510,12 @@ cargo test --release
 
 An external-history test is ignored when the operator-held dataset is unavailable in the test environment. Synthetic fixtures test mechanics; they do not demonstrate market performance.
 
-Current verified local result: **103 tests passed, 0 failed, 0 ignored** across all seven Rust binaries. Test totals can change as the product evolves; regenerate and preserve a dated test report for the final buyer delivery.
+Current verified local result: **104 tests passed, 0 failed, 0 ignored** across all seven Rust binaries. Test totals can change as the product evolves; regenerate and preserve a dated test report for the final buyer delivery.
 ### Evidence classification
 
 | Statement | Classification |
 |---|---|
-| 98-test result and live-feature build | Reproducible in the repository |
+| 104-test result and live-feature build | Reproducible in the repository |
 | Current dashboard/API HTTPS checks | Deployment verification; repeat during buyer acceptance |
 | End-to-end demo proposal/buy/settlement exercise | Current deployment evidence and redacted logs |
 | Six months of demo testing | Seller-reported; broker records required for independent verification |
@@ -594,7 +594,7 @@ Copyright (c) 2026. All rights reserved. This repository is proprietary unless a
 
 Third-party Rust crates, Deriv services and trademarks, provider data, and external datasets remain subject to their respective owners and terms. Possession of this repository does not transfer provider access, credentials, data rights, or permission to redistribute third-party material.
 
-Any commercial licence or copyright assignment must be set out in a separate signed agreement. The files under `legal/drafts/` are unsigned drafts and require qualified legal review before use.
+Any commercial licence or copyright assignment must be set out in a separate written transaction agreement accepted by the relevant parties. Transaction documents are handled separately during due diligence; see `SUBMISSION_SCOPE.md`.
 
 ## Disclaimer
 
@@ -712,16 +712,16 @@ cargo run --locked --bin deriv_ops -- buyer-evaluate
 
 cargo run --locked --bin deriv_history -- audit \
   --raw /path/to/raw --normalized history-normalized \
-  --report reports/history/dataset-audit.json \
-  --manifest reports/history/provenance-manifest.json
+  --report reports/private/history/dataset-audit.json \
+  --manifest reports/private/history/provenance-manifest.json
 cargo run --locked --bin deriv_history -- overlap \
   --normalized history-normalized \
-  --audit reports/history/dataset-audit.json \
-  --manifest reports/history/provenance-manifest.json \
-  --markdown reports/history/DATASET_AUDIT.md
+  --audit reports/private/history/dataset-audit.json \
+  --manifest reports/private/history/provenance-manifest.json \
+  --markdown reports/private/history/DATASET_AUDIT.md
 ```
 
-Packaging additionally requires `cargo-cyclonedx`, `FINAL_BUYER_LICENCE`, and `FINAL_BUYER_LICENCE_REVIEWED=YES`. It rejects the superseded root licence and obvious draft markers. Generated archives live under ignored `buyer-data-room/`.
+Packaging additionally requires `cargo-cyclonedx`, `FINAL_BUYER_LICENCE`, and `FINAL_BUYER_LICENCE_REVIEWED=YES`. The final transaction document is supplied separately and is not part of this appraisal repository. Generated archives live under ignored `buyer-data-room/`.
 
 ### Operational state and safe recovery
 

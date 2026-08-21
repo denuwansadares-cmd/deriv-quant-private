@@ -55,14 +55,14 @@ Audit command එක configured symbols 10ට අදාළ CSV files 10ම බ�
 cargo run --locked --bin deriv_history -- audit \
   --raw /absolute/path/to/raw-history \
   --normalized "$PWD/history-normalized" \
-  --report "$PWD/reports/history/dataset-audit.json" \
-  --manifest "$PWD/reports/history/provenance-manifest.json"
+  --report "$PWD/reports/private/history/dataset-audit.json" \
+  --manifest "$PWD/reports/private/history/provenance-manifest.json"
 
 cargo run --locked --bin deriv_history -- overlap \
   --normalized "$PWD/history-normalized" \
-  --audit "$PWD/reports/history/dataset-audit.json" \
-  --manifest "$PWD/reports/history/provenance-manifest.json" \
-  --markdown "$PWD/reports/history/DATASET_AUDIT.md"
+  --audit "$PWD/reports/private/history/dataset-audit.json" \
+  --manifest "$PWD/reports/private/history/provenance-manifest.json" \
+  --markdown "$PWD/reports/private/history/DATASET_AUDIT.md"
 ```
 
 Malformed/non-finite rows, UTC mismatch, order, duplicate, gap, hash, licence/transfer restriction සහ exact synchronized intersection review කරන්න. Bounding-range overlap එක synchronized evidence නොවේ. Transfer permission නැති raw history buyer package එකට දාන්න එපා.

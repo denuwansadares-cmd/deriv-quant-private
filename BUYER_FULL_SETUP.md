@@ -18,7 +18,7 @@ docker compose version
 cargo run --locked --bin deriv_ops -- release-readiness
 ```
 
-A clean evaluation must pass formatting, all-target compilation, strict Clippy, 103+ tests, live-feature compilation without execution, deterministic fixture verification, and Compose validation. Test totals can legitimately increase.
+A clean evaluation must pass formatting, all-target compilation, strict Clippy, 104+ tests, live-feature compilation without execution, deterministic fixture verification, and Compose validation. Test totals can legitimately increase.
 
 ## 2. Files and binaries
 
@@ -60,14 +60,14 @@ The audit expects exactly the ten configured symbol CSV files. Originals are rea
 cargo run --locked --bin deriv_history -- audit \
   --raw /absolute/path/to/raw-history \
   --normalized "$PWD/history-normalized" \
-  --report "$PWD/reports/history/dataset-audit.json" \
-  --manifest "$PWD/reports/history/provenance-manifest.json"
+  --report "$PWD/reports/private/history/dataset-audit.json" \
+  --manifest "$PWD/reports/private/history/provenance-manifest.json"
 
 cargo run --locked --bin deriv_history -- overlap \
   --normalized "$PWD/history-normalized" \
-  --audit "$PWD/reports/history/dataset-audit.json" \
-  --manifest "$PWD/reports/history/provenance-manifest.json" \
-  --markdown "$PWD/reports/history/DATASET_AUDIT.md"
+  --audit "$PWD/reports/private/history/dataset-audit.json" \
+  --manifest "$PWD/reports/private/history/provenance-manifest.json" \
+  --markdown "$PWD/reports/private/history/DATASET_AUDIT.md"
 ```
 
 Review malformed/non-finite rows, UTC mismatches, ordering, duplicates, gaps, hashes, licence/transfer restrictions, and exact synchronized intersections. Bounding-range overlap is not synchronized evidence. Never package raw history without explicit transfer permission.

@@ -8,7 +8,7 @@ Evidence refreshed: 2026-08-13
 - 10,000 malformed/hostile JSON cases completed without panic or a fabricated contract-open event.
 - 10,000 seeded state-transition properties matched the allow-list; rejected transitions did not mutate state.
 - 10,000 deterministic RNG steps matched for identical seeds.
-- The current full suite passed: 103 passed, 0 failed, 0 ignored across the maintained Rust targets (verified 2026-08-13).
+- The current full suite passed: 104 passed, 0 failed, 0 ignored across the maintained Rust targets (verified 2026-08-21).
 - On 2026-08-03, two isolated locked release builds were bit-for-bit identical (SHA-256 b28592d78b8d9ba0867a2479ea0fc4859e273651633fba66f5b41c3af322005f).
 - On 2026-08-03, RustSec scanned 218 locked dependencies against advisory database commit d91a8fc9492378f23cba86b81770c6d16de6ebba: 0 known vulnerabilities.
 

@@ -22,11 +22,11 @@ services:
       RUST_LOG: info
     volumes:
       - type: bind
-        source: /home/sunandajayalathq/deriv_tick_downloader/data
+        source: ${DERIV_HISTORY_RAW_DIR:-./data/history}
         target: /history/raw
         read_only: true
       - type: bind
-        source: /home/sunandajayalathq/deriv_bot/history-normalized
+        source: ${DERIV_HISTORY_NORMALIZED_DIR:-./history-normalized}
         target: /history/normalized
         read_only: false
       - deriv-risk:/var/lib/deriv-risk

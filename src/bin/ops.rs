@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     env, fs, io,
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
@@ -74,6 +75,212 @@ fn temporary(label: &str) -> PathBuf {
             .unwrap_or_default()
             .as_nanos()
     ))
+}
+
+fn stable_component_token(value: &str, label: &str) -> Result<String> {
+    if value.is_empty()
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+    {
+        return Err(format!("invalid SBOM {label}: {value:?}").into());
+    }
+    Ok(value.to_owned())
+}
+fn replace_exact_strings(value: &mut serde_json::Value, replacements: &HashMap<String, String>) {
+    match value {
+        serde_json::Value::String(text) => {
+            if let Some(replacement) = replacements.get(text) {
+                *text = replacement.clone();
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                replace_exact_strings(value, replacements);
+            }
+        }
+        serde_json::Value::Object(values) => {
+            for value in values.values_mut() {
+                replace_exact_strings(value, replacements);
+            }
+        }
+        _ => {}
+    }
+}
+fn collect_bom_refs(value: &serde_json::Value, refs: &mut Vec<String>) {
+    match value {
+        serde_json::Value::Array(values) => {
+            for value in values {
+                collect_bom_refs(value, refs);
+            }
+        }
+        serde_json::Value::Object(values) => {
+            if let Some(reference) = values.get("bom-ref").and_then(|value| value.as_str()) {
+                refs.push(reference.to_owned());
+            }
+            for value in values.values() {
+                collect_bom_refs(value, refs);
+            }
+        }
+        _ => {}
+    }
+}
+fn contains_local_or_absolute_path(value: &serde_json::Value, forbidden: &[String]) -> bool {
+    match value {
+        serde_json::Value::String(text) => {
+            let windows_absolute = text.as_bytes().get(1) == Some(&b':')
+                && matches!(text.as_bytes().get(2), Some(b'\\' | b'/'));
+            text.starts_with('/')
+                || windows_absolute
+                || text.contains("path+file://")
+                || text.contains("file:///")
+                || forbidden
+                    .iter()
+                    .any(|fragment| !fragment.is_empty() && text.contains(fragment))
+        }
+        serde_json::Value::Array(values) => values
+            .iter()
+            .any(|value| contains_local_or_absolute_path(value, forbidden)),
+        serde_json::Value::Object(values) => values
+            .values()
+            .any(|value| contains_local_or_absolute_path(value, forbidden)),
+        _ => false,
+    }
+}
+fn normalize_sbom(value: &mut serde_json::Value, root: &Path) -> Result<HashMap<String, String>> {
+    let application = value
+        .pointer_mut("/metadata/component")
+        .and_then(|value| value.as_object_mut())
+        .ok_or("SBOM metadata.component is missing")?;
+    let package_name = stable_component_token(
+        application
+            .get("name")
+            .and_then(|value| value.as_str())
+            .ok_or("SBOM application name is missing")?,
+        "application name",
+    )?;
+    let package_version = stable_component_token(
+        application
+            .get("version")
+            .and_then(|value| value.as_str())
+            .ok_or("SBOM application version is missing")?,
+        "application version",
+    )?;
+    let old_root_ref = application
+        .get("bom-ref")
+        .and_then(|value| value.as_str())
+        .ok_or("SBOM application bom-ref is missing")?
+        .to_owned();
+    let new_root_ref = format!("urn:cdx:cargo:{package_name}:{package_version}:application");
+    let mut replacements = HashMap::from([(old_root_ref, new_root_ref)]);
+    let mut stable_refs = HashSet::new();
+    if !stable_refs.insert(replacements.values().next().unwrap().clone()) {
+        return Err("duplicate normalized SBOM application reference".into());
+    }
+    let binaries = application
+        .get_mut("components")
+        .and_then(|value| value.as_array_mut())
+        .ok_or("SBOM application binary components are missing")?;
+    for binary in binaries {
+        let binary = binary
+            .as_object_mut()
+            .ok_or("SBOM binary component is malformed")?;
+        if binary.get("type").and_then(|value| value.as_str()) != Some("application") {
+            return Err("unexpected non-application workspace component".into());
+        }
+        let binary_name = stable_component_token(
+            binary
+                .get("name")
+                .and_then(|value| value.as_str())
+                .ok_or("SBOM binary name is missing")?,
+            "binary name",
+        )?;
+        let binary_version = binary
+            .get("version")
+            .and_then(|value| value.as_str())
+            .ok_or("SBOM binary version is missing")?;
+        if binary_version != package_version {
+            return Err("SBOM binary version differs from package version".into());
+        }
+        let old_ref = binary
+            .get("bom-ref")
+            .and_then(|value| value.as_str())
+            .ok_or("SBOM binary bom-ref is missing")?
+            .to_owned();
+        let new_ref =
+            format!("urn:cdx:cargo:{package_name}:{package_version}:binary:{binary_name}");
+        if !stable_refs.insert(new_ref.clone()) || replacements.insert(old_ref, new_ref).is_some() {
+            return Err("duplicate SBOM binary reference".into());
+        }
+    }
+    replace_exact_strings(value, &replacements);
+
+    let mut bom_refs = Vec::new();
+    collect_bom_refs(value, &mut bom_refs);
+    let unique_refs: HashSet<&str> = bom_refs.iter().map(String::as_str).collect();
+    if unique_refs.len() != bom_refs.len() {
+        return Err("duplicate SBOM bom-ref".into());
+    }
+    let dependencies = value
+        .get("dependencies")
+        .and_then(|value| value.as_array())
+        .ok_or("SBOM dependency graph is missing")?;
+    for dependency in dependencies {
+        let reference = dependency
+            .get("ref")
+            .and_then(|value| value.as_str())
+            .ok_or("SBOM dependency ref is missing")?;
+        if !unique_refs.contains(reference) {
+            return Err(format!("unresolved SBOM dependency ref: {reference}").into());
+        }
+        for target in dependency
+            .get("dependsOn")
+            .and_then(|value| value.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let target = target.as_str().ok_or("malformed SBOM dependsOn ref")?;
+            if !unique_refs.contains(target) {
+                return Err(format!("unresolved SBOM dependsOn ref: {target}").into());
+            }
+        }
+    }
+    let mut forbidden = vec![
+        root.to_string_lossy().into_owned(),
+        env::temp_dir().to_string_lossy().into_owned(),
+    ];
+    for name in ["HOME", "USER", "USERNAME", "HOSTNAME", "COMPUTERNAME"] {
+        if let Ok(value) = env::var(name) {
+            if value.len() >= 5 {
+                forbidden.push(value);
+            }
+        }
+    }
+    if contains_local_or_absolute_path(value, &forbidden) {
+        return Err(
+            "SBOM contains a local, absolute, or environment-specific path/identity".into(),
+        );
+    }
+    Ok(replacements)
+}
+fn normalize_sbom_file(root: &Path) -> Result {
+    let path = root.join("deriv_bot.cdx.json");
+    let input = fs::read_to_string(&path)?;
+    let mut normalized: serde_json::Value = serde_json::from_str(&input)?;
+    let replacements = normalize_sbom(&mut normalized, root)?;
+    let mut replacements = replacements.into_iter().collect::<Vec<_>>();
+    replacements.sort_by_key(|(old, _)| std::cmp::Reverse(old.len()));
+    let mut output = input;
+    for (old, new) in replacements {
+        output = output.replace(&old, &new);
+    }
+    let mut reparsed: serde_json::Value = serde_json::from_str(&output)?;
+    normalize_sbom(&mut reparsed, root)?;
+    if reparsed != normalized {
+        return Err("SBOM reference normalization was incomplete".into());
+    }
+    fs::write(path, output)?;
+    Ok(())
 }
 
 fn reproducible_build(root: &Path) -> Result {
@@ -158,6 +365,7 @@ fn release_readiness(root: &Path) -> Result {
         "README.md",
         "BUYER_FULL_SETUP.md",
         "BUYER_FULL_SETUP_SI.md",
+        "SUBMISSION_SCOPE.md",
         "PRODUCT_API.md",
         "SECURITY_EVIDENCE.md",
         "CLAIMS.md",
@@ -284,8 +492,11 @@ fn package(root: &Path) -> Result {
     if env::var("FINAL_BUYER_LICENCE_REVIEWED").as_deref() != Ok("YES") {
         return Err("FINAL_BUYER_LICENCE_REVIEWED=YES is required".into());
     }
-    if fs::canonicalize(&licence)? == fs::canonicalize(root.join("LICENSE"))? {
-        return Err("superseded root LICENSE is excluded".into());
+    let former_root_licence = root.join("LICENSE");
+    if former_root_licence.exists()
+        && fs::canonicalize(&licence)? == fs::canonicalize(&former_root_licence)?
+    {
+        return Err("the former root LICENSE is excluded".into());
     }
     let text = fs::read_to_string(&licence)?.to_ascii_uppercase();
     if ["DRAFT", "NOT SIGNED", "SUPERSEDED"]
@@ -294,7 +505,11 @@ fn package(root: &Path) -> Result {
     {
         return Err("buyer licence appears draft or superseded".into());
     }
-    run("cargo", &["cyclonedx", "--format", "json"])?;
+    run(
+        "cargo",
+        &["cyclonedx", "--target", "all", "--format", "json"],
+    )?;
+    normalize_sbom_file(root)?;
     let stage = temporary("data-room");
     for dir in ["source", "evidence", "legal", "media"] {
         fs::create_dir_all(stage.join(dir))?;
@@ -312,6 +527,7 @@ fn package(root: &Path) -> Result {
         "BUYER_ONBOARDING.md",
         "BUYER_FULL_SETUP.md",
         "BUYER_FULL_SETUP_SI.md",
+        "SUBMISSION_SCOPE.md",
     ] {
         copy_file(&root.join(item), &stage.join("source").join(item))?;
     }
@@ -360,7 +576,7 @@ fn package(root: &Path) -> Result {
 }
 fn usage() {
     eprintln!(
-        "usage: deriv_ops <release-readiness|reproducible-build|buyer-evaluate|package-data-room>"
+        "usage: deriv_ops <release-readiness|reproducible-build|buyer-evaluate|normalize-sbom|package-data-room>"
     );
 }
 fn main() -> Result {
@@ -370,6 +586,7 @@ fn main() -> Result {
         "release-readiness" => release_readiness(&root),
         "reproducible-build" => reproducible_build(&root),
         "buyer-evaluate" => buyer_evaluate(&root),
+        "normalize-sbom" => normalize_sbom_file(&root),
         "package-data-room" => package(&root),
         _ => {
             usage();
@@ -391,5 +608,63 @@ mod tests {
         fs::write(&path, b"ok").unwrap();
         assert!(require(&path).is_ok());
         fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn sbom_normalization_is_stable_and_fail_closed() {
+        let fixture = serde_json::json!({
+            "metadata": {"component": {
+                "type": "application",
+                "bom-ref": "path+file:///checkout/one#1.0.0",
+                "name": "deriv_bot",
+                "version": "1.0.0",
+                "components": [
+                    {"type":"application","bom-ref":"path+file:///checkout/one#1.0.0 bin-target-0","name":"deriv_bot","version":"1.0.0"},
+                    {"type":"application","bom-ref":"path+file:///checkout/one#1.0.0 bin-target-1","name":"deriv_ops","version":"1.0.0"}
+                ]
+            }},
+            "components": [{"type":"library","bom-ref":"registry#index#serde@1.0.0","name":"serde","version":"1.0.0","licenses":[{"expression":"MIT OR Apache-2.0"}]}],
+            "dependencies": [
+                {"ref":"path+file:///checkout/one#1.0.0","dependsOn":["registry#index#serde@1.0.0"]},
+                {"ref":"registry#index#serde@1.0.0","dependsOn":[]}
+            ]
+        });
+        let mut first = fixture.clone();
+        let mut second = fixture;
+        normalize_sbom(&mut first, Path::new("/checkout/one")).unwrap();
+        normalize_sbom(&mut second, Path::new("/different/location")).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(
+            first.pointer("/metadata/component/bom-ref").unwrap(),
+            "urn:cdx:cargo:deriv_bot:1.0.0:application"
+        );
+        assert_eq!(
+            first
+                .pointer("/metadata/component/components/1/bom-ref")
+                .unwrap(),
+            "urn:cdx:cargo:deriv_bot:1.0.0:binary:deriv_ops"
+        );
+        assert_eq!(
+            first
+                .pointer("/components/0/licenses/0/expression")
+                .unwrap(),
+            "MIT OR Apache-2.0"
+        );
+        assert_eq!(
+            first.pointer("/dependencies/0/ref").unwrap(),
+            "urn:cdx:cargo:deriv_bot:1.0.0:application"
+        );
+
+        let mut duplicate = first.clone();
+        duplicate["metadata"]["component"]["components"][1]["name"] =
+            serde_json::json!("deriv_bot");
+        assert!(normalize_sbom(&mut duplicate, Path::new("/checkout")).is_err());
+
+        let mut unresolved = first.clone();
+        unresolved["dependencies"][0]["dependsOn"] = serde_json::json!(["missing"]);
+        assert!(normalize_sbom(&mut unresolved, Path::new("/checkout")).is_err());
+
+        let mut location = first;
+        location["metadata"]["component"]["local"] = serde_json::json!("/private/path");
+        assert!(normalize_sbom(&mut location, Path::new("/checkout")).is_err());
     }
 }

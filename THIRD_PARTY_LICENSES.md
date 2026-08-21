@@ -1,10 +1,24 @@
 # Third-party dependency licences
 
-Generated from the locked Cargo dependency graph on 2026-08-03. This inventory reports crate metadata; it is not legal advice and does not replace bundled licence texts or notice obligations.
+Generated from and reconciled against the locked Cargo dependency graph on 2026-08-21. This inventory reports crate metadata; it is not legal advice and does not replace bundled licence texts or notice obligations.
 
 - Locked registry packages: 217
 - Packages missing a Cargo licence expression: 0
 - Machine-readable inventory: `THIRD_PARTY_LICENSES.tsv`
+
+
+## Inventory scope and reproduction
+
+`Cargo.lock` has 218 package entries: one local root package plus 217 registry packages. The headerless TSV has 217 rows and its package name and version identities match the registry packages exactly. The SBOM was regenerated for `--target all` and contains 217 library components, including target-conditional, development, and build dependencies selected by the all-target Cargo graph. The local root application is represented in SBOM metadata rather than in the third-party component list.
+
+```bash
+rg -c "^\[\[package\]\]" Cargo.lock
+rg -c "^source = \"registry\+" Cargo.lock
+wc -l THIRD_PARTY_LICENSES.tsv
+CARGO_NET_OFFLINE=true cargo cyclonedx --target all --format json --override-filename deriv_bot.cdx --quiet
+CARGO_NET_OFFLINE=true cargo run --offline --locked --bin deriv_ops -- normalize-sbom
+jq ".components | length" deriv_bot.cdx.json
+```
 
 Compound expressions must be evaluated under the licence option actually selected for distribution. Regenerate this inventory whenever `Cargo.lock` changes.
 
