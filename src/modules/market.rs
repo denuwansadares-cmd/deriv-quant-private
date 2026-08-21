@@ -29,6 +29,26 @@ impl HistoryLoader {
         let mut buffers = HashMap::new();
         let mut total = 0usize;
 
+        // Accept either the documented CSV directory or a single CSV file. A
+        // file is loaded only for the matching symbol, which makes the bundled
+        // synthetic fixture useful directly from the CLI without silently
+        // producing an empty simulation.
+        if base.is_file() {
+            let requested_symbol = base
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default();
+            for sym in symbols {
+                let mut buffer = RingBuffer::new(capacity);
+                if sym == requested_symbol {
+                    total += load_csv_file(&base, sym, &mut buffer, capacity)?;
+                }
+                buffers.insert(sym.clone(), buffer);
+            }
+            log::info!("Loaded {} ticks across {} symbols", total, buffers.len());
+            return Ok(Self { buffers, loaded_count: total });
+        }
+
         for sym in symbols {
             let mut buffer = RingBuffer::new(capacity);
             let csv_path = base.join(format!("{}.csv", sym));

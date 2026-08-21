@@ -61,7 +61,7 @@ At the current workspace revision:
 - All maintained executable implementation is Rust, including runtime, supervision, release operations, history auditing, and in-source tests.
 - HTML and CSS remain presentation templates; JSON, Markdown, YAML, and TOML remain interoperable data, documentation, and configuration formats.
 - Trading/research core: 2,589 lines across models, strategy, qualification, mathematics, risk engines, and backtesting.
-- Automated test result: 98 passed, 0 failed, 0 ignored across the four Rust binaries.
+- Automated test result: 103 passed, 0 failed, 0 ignored across the maintained Rust targets (verified 2026-08-13).
 - `cargo check --all-targets`, formatting validation, and strict Clippy with warnings denied pass locally.
 
 Line counts describe implementation scope, not software quality, profitability, or market value. The reproducible checks and disclosed limitations are the more important buyer evidence.
@@ -572,6 +572,8 @@ The implementation currently uses `include!` from `main.rs` while the shared `sr
 - Never include historical datasets in a buyer package without separate redistribution/transfer permission, or include seller credentials under any circumstances.
 
 ## Known limitations
+
+- **Tradier is not implemented.** This repository contains only the Deriv broker adapter; there is no Tradier authentication, market-data, order-routing, account, or settlement integration. Adding Tradier requires a separately designed and tested adapter.
 
 - No verified profitability or guaranteed win rate.
 - No independently established live performance.

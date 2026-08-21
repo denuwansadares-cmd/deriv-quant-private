@@ -35,7 +35,7 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc};
-use tokio::time::{interval, sleep, Instant};
+use tokio::time::{interval, interval_at, sleep, Instant};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[cfg(test)]
@@ -89,7 +89,10 @@ async fn wait_for_exposure_drain(
     timeout_duration: Duration,
 ) -> bool {
     let deadline = Instant::now() + timeout_duration;
-    let mut retry = interval(Duration::from_secs(2));
+    let mut retry = interval_at(
+        Instant::now() + Duration::from_secs(2),
+        Duration::from_secs(2),
+    );
     let mut waiting_logged = false;
     loop {
         let risk_ids: Vec<String> = risk.read().safety_open_contracts.keys().cloned().collect();

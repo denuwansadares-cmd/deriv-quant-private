@@ -13,6 +13,7 @@
 | Simulator contract pricing | Approximate, explicitly labelled | report schema |
 | Synthetic buyer fixture | Implemented, checksum/replay locked | buyer evaluation |
 | Supervisor-controlled demo/live lifecycle | Implemented; one child, persisted config, graceful stop | source + deployment checks |
+| Tradier broker adapter | NOT IMPLEMENTED | Deriv is the only implemented broker integration |
 | Watchdog persistent stop/process termination | Implemented; external chaos certification pending | source + tests |
 | Docker persistent risk/audit volumes | Implemented and exercised in deployment | Compose + HTTPS smoke checks |
 | Dashboard control plane | TLS Basic auth, server-injected operator/CSRF, expiry, role, audit, bounded risk and demo/live controls | source + deployment checks |

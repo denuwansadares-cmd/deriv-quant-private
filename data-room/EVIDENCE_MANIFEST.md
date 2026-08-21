@@ -4,7 +4,7 @@
 |---|---|
 | Clean source snapshot | generated and extracted evaluation passed |
 | Locked Cargo dependencies | present |
-| Test/reliability evidence | 98 passed, 0 failed, 0 ignored; verified 2026-08-10 |
+| Test/reliability evidence | 103 passed, 0 failed, 0 ignored; verified 2026-08-13 |
 | Qualification representation | explicit Qualified/NotQualified; excluded from consensus |
 | Fuzz stress | 10,000-case in-process parser test; continuous fuzz corpus absent |
 | Duplicate-buy proof model | 10,000 seeded scenarios passed |
@@ -22,6 +22,7 @@
 | Signed binary | MISSING; checksum is not a signature |
 | External security/code/quant/legal audit | MISSING |
 | Demo screenshot/video | MISSING |
+| Tradier adapter | NOT IMPLEMENTED; Deriv is the only broker adapter |
 | IP ownership | draft; signatures and chain-of-title review required |
 
 Missing evidence must not be removed or represented as passed.
