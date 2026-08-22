@@ -15,6 +15,10 @@ jobs:
   rust-and-deriv-contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      DERIV_DASHBOARD_TOKEN: ci-only-dashboard-token-not-for-production
+      DERIV_DASHBOARD_CSRF_TOKEN: ci-only-c4e82a6f19d743b58a0e7c3d9261f5b4
+      DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX: "4102444800"
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -70,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      DERIV_DASHBOARD_TOKEN: ci-only-7f3a91c8e2b64d50a7f3c9218d6e4b0a
+      DERIV_DASHBOARD_TOKEN: ci-only-dashboard-token-not-for-production
       DERIV_DASHBOARD_CSRF_TOKEN: ci-only-c4e82a6f19d743b58a0e7c3d9261f5b4
       DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX: "4102444800"
     steps:
