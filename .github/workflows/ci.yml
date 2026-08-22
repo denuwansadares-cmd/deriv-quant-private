@@ -69,16 +69,17 @@ jobs:
   container-build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      DERIV_DASHBOARD_TOKEN: ci-only-7f3a91c8e2b64d50a7f3c9218d6e4b0a
+      DERIV_DASHBOARD_CSRF_TOKEN: ci-only-c4e82a6f19d743b58a0e7c3d9261f5b4
+      DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX: "4102444800"
     steps:
       - uses: actions/checkout@v6
       - name: Verify CI shell dependencies
-        run: command -v cp printf sed docker curl grep
+        run: command -v cp printf docker curl grep
       - run: cp .env.example .env
       - run: |
           cp .env.example .dashboard.env
-          sed -i "s/^DERIV_DASHBOARD_TOKEN=.*/DERIV_DASHBOARD_TOKEN=ci-dashboard-token-0000000000000001/" .env
-          sed -i "s/^DERIV_DASHBOARD_CSRF_TOKEN=.*/DERIV_DASHBOARD_CSRF_TOKEN=ci-csrf-token-00000000000000000001/" .env
-          sed -i "s/^DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX=.*/DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX=4102444800/" .env
           printf "DASHBOARD_ADMIN_HASH=%s\nDASHBOARD_BUYER_HASH=%s\nDASHBOARD_OPERATOR_TOKEN=%s\nDASHBOARD_OPERATOR_CSRF=%s\nDERIV_PUBLIC_HOST=localhost\n" "ci" "ci" "ci-dashboard-token-0000000000000001" "ci-csrf-token-00000000000000000001" > .dashboard.env
       - run: docker compose config --quiet
       - uses: docker/setup-buildx-action@v4
@@ -93,7 +94,7 @@ jobs:
       - run: |
           docker run --rm --entrypoint deriv_ops deriv-platform:ci 2>&1 | grep -q "usage: deriv_ops"
       - run: |
-          docker run -d --name deriv-dashboard-ci -p 127.0.0.1:18080:8080 --entrypoint deriv_platform -e DERIV_DASHBOARD_BIND=0.0.0.0:8080 deriv-platform:ci
+          docker run -d --name deriv-dashboard-ci -p 127.0.0.1:18080:8080 --entrypoint deriv_platform -e DERIV_DASHBOARD_BIND=0.0.0.0:8080 -e DERIV_DASHBOARD_TOKEN -e DERIV_DASHBOARD_CSRF_TOKEN -e DERIV_DASHBOARD_TOKEN_EXPIRES_UNIX deriv-platform:ci
           curl --fail --silent --retry 5 --retry-connrefused --retry-delay 1 http://127.0.0.1:18080/api/v1/status
           docker stop deriv-dashboard-ci
           docker rm deriv-dashboard-ci
