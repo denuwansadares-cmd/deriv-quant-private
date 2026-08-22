@@ -183,7 +183,7 @@ docker compose down
 
 ## 8. Operator/viewer access
 
-Current Caddy config එකේ `Denu` operator; `Buyer` read-only. Buyer POST controls වලට 403 ලැබීම expected. Usernames වෙනස් කරනවා නම් Basic Auth සහ match expressions දෙකම consistentව update කරන්න.
+Current Caddy config එකේ `Operator` operator; `Buyer` read-only. Buyer POST controls වලට 403 ලැබීම expected. Usernames වෙනස් කරනවා නම් Basic Auth සහ match expressions දෙකම consistentව update කරන්න.
 
 Start කිරීමට පෙර saved stake/loss, idle state, latches, broker exposure, token expiry, history mount සහ account type verify කරන්න. Graceful stop මුලින් භාවිතා කරන්න. Emergency stop normal pause button එකක් නොවේ; persistent safety latch එකකි.
 

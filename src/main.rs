@@ -67,6 +67,31 @@ include!("modules/reliability_tests.rs");
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════════
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StreamIntegrityAction {
+    StopAndReconcile,
+    Terminate,
+}
+
+fn stream_integrity_action(error: &broadcast::error::RecvError) -> StreamIntegrityAction {
+    match error {
+        broadcast::error::RecvError::Lagged(_) => StreamIntegrityAction::StopAndReconcile,
+        broadcast::error::RecvError::Closed => StreamIntegrityAction::Terminate,
+    }
+}
+
+fn contract_open_is_correlated(
+    state: TradeState,
+    active_contract_present: bool,
+    expected_proposal_id: Option<&str>,
+    response_proposal_id: Option<&str>,
+) -> bool {
+    state == TradeState::BuyPending
+        && !active_contract_present
+        && expected_proposal_id.is_some()
+        && expected_proposal_id == response_proposal_id
+}
+
 async fn join_runtime_tasks(
     tasks: Vec<tokio::task::JoinHandle<()>>,
     timeout_duration: Duration,
@@ -427,6 +452,7 @@ async fn main() -> Result<()> {
         let mut pending_contract_type = ContractType::Accumulator;
         let mut pending_entry_tick_epoch = 0u64;
         let mut pending_buy_cost = 0.0f64;
+        let mut pending_buy_proposal_id: Option<String> = None;
         let mut pending_estimated_win_rate: Option<f64> = None;
         let mut match_predictors: HashMap<String, MatchPredictor> = HashMap::new();
         let mut latest_match_risk: HashMap<String, (MatchRisk, f64)> = HashMap::new();
@@ -562,11 +588,13 @@ async fn main() -> Result<()> {
                             .unwrap_or(false);
                         if symbol_matches && proposal_is_fresh {
                             if let Some((proposal_id, ask_price)) = pending_proposal.take() {
+                                pending_buy_proposal_id = Some(proposal_id.clone());
                                 *pbi1.write() = Some(PendingBuyInfo {
                                     symbol: tick.symbol.clone(),
                                     proposed_price: ask_price,
                                     entry_tick_epoch: tick.epoch,
                                     contract_type: pending_contract_type,
+                                    proposal_id: proposal_id.clone(),
                                 });
                                 pending_buy_cost = ask_price;
                                 if state.transition(TradeState::BuyPending) {
@@ -577,6 +605,7 @@ async fn main() -> Result<()> {
                                     }) {
                                         log::error!("Next-tick buy delivery failed: {}", error);
                                         *pbi1.write() = None;
+                                        pending_buy_proposal_id = None;
                                         pending_symbol = None;
                                         pending_since = None;
                                         state.transition(TradeState::CollectingTicks);
@@ -641,6 +670,7 @@ async fn main() -> Result<()> {
                             *pbi1.write() = None;
                             pending_proposal = None;
                             pending_symbol = None;
+                            pending_buy_proposal_id = None;
                             pending_since = None;
                             state.transition(TradeState::CollectingTicks);
                         } else {
@@ -1347,11 +1377,13 @@ async fn main() -> Result<()> {
                         }
                         state.transition(TradeState::ProposalReady);
                         {
+                            pending_buy_proposal_id = Some(id.clone());
                             *pbi1.write() = Some(PendingBuyInfo {
                                 symbol: underlying_symbol.clone(),
                                 proposed_price: ask_price,
                                 entry_tick_epoch: pending_entry_tick_epoch,
                                 contract_type: pending_contract_type,
+                                proposal_id: id.clone(),
                             });
                             pending_buy_cost = ask_price;
                             if state.transition(TradeState::BuyPending) {
@@ -1362,6 +1394,7 @@ async fn main() -> Result<()> {
                                 }) {
                                     log::error!("Immediate buy delivery failed: {}", error);
                                     *pbi1.write() = None;
+                                    pending_buy_proposal_id = None;
                                     pending_symbol = None;
                                     pending_since = None;
                                     state.transition(TradeState::CollectingTicks);
@@ -1383,7 +1416,23 @@ async fn main() -> Result<()> {
                         );
                     }
                 }
-                Ok(ApiEvent::ContractOpened { contract_id, .. }) => {
+                Ok(ApiEvent::ContractOpened {
+                    contract_id,
+                    proposal_id,
+                    ..
+                }) => {
+                    if !contract_open_is_correlated(
+                        state,
+                        active_contract.is_some(),
+                        pending_buy_proposal_id.as_deref(),
+                        proposal_id.as_deref(),
+                    ) {
+                        risk_v2_stop("unexpected contract-open event requires reconciliation");
+                        buy_reconciliation_pending = true;
+                        let _ = cmd1.try_send(ApiCommand::RequestPortfolio);
+                        log::error!("Unexpected ContractOpened ignored pending authoritative reconciliation");
+                        continue;
+                    }
                     risk_v2_contract_opened(&contract_id, pending_buy_cost);
                     journal_event(
                         "order_result",
@@ -1392,10 +1441,8 @@ async fn main() -> Result<()> {
                             "normalized_contract_id": normalized_id(&contract_id),
                         }),
                     );
-                    if state != TradeState::BuyPending || active_contract.is_some() {
-                        continue;
-                    }
                     buy_reconciliation_pending = false;
+                    pending_buy_proposal_id = None;
                     state.transition(TradeState::ContractOpen);
                     active_contract = Some(contract_id.clone());
                     active_contract_type = pending_contract_type;
@@ -1585,6 +1632,12 @@ async fn main() -> Result<()> {
                     request_kind,
                     ..
                 }) => {
+                    if request_kind.as_deref() == Some("portfolio") {
+                        risk_v2_stop("uncertain portfolio state requires reconciliation");
+                        buy_reconciliation_pending = true;
+                        log::error!("Portfolio response rejected [{}]; entries remain blocked pending reconciliation", code);
+                        continue;
+                    }
                     if request_kind.as_deref() == Some("sell")
                         && matches!(code.as_str(), "InvalidtoSell" | "ContractNotFound")
                     {
@@ -1652,8 +1705,15 @@ async fn main() -> Result<()> {
                     break;
                 }
 
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    log::warn!("[Strategy] Lagged {} events", n);
+                Err(error @ broadcast::error::RecvError::Lagged(n)) => {
+                    debug_assert_eq!(
+                        stream_integrity_action(&error),
+                        StreamIntegrityAction::StopAndReconcile
+                    );
+                    risk_v2_stop("strategy event stream lag requires reconciliation");
+                    buy_reconciliation_pending = true;
+                    let _ = cmd1.try_send(ApiCommand::RequestPortfolio);
+                    log::error!("[Strategy] Lagged {} events; persistent safe-stop and reconciliation engaged", n);
                 }
             }
         }
@@ -1699,10 +1759,16 @@ async fn main() -> Result<()> {
                 }
             }
             event = evt_rx2.recv() => match event {
-                Ok(ApiEvent::ContractOpened { contract_id, buy_price }) => {
-                    executor_exposure2.write().insert(contract_id.clone());
+                Ok(ApiEvent::ContractOpened { contract_id, buy_price, proposal_id }) => {
                     // Take pending buy info from Strategy
-                    if let Some(info) = pbi2.write().take() {
+                    if let Some(info) = pbi2.read().clone() {
+                        if proposal_id.as_deref() != Some(info.proposal_id.as_str()) {
+                            risk_v2_stop("executor contract-open proposal mismatch requires reconciliation");
+                            log::error!("[Executor] ContractOpened proposal mismatch ignored pending reconciliation");
+                            continue;
+                        }
+                        let _ = pbi2.write().take();
+                        executor_exposure2.write().insert(contract_id.clone());
                         let entry_price = buy_price.unwrap_or(info.proposed_price);
                         risk_v2_contract_opened(&contract_id, entry_price);
                         if info.contract_type == ContractType::Accumulator {
@@ -1713,9 +1779,10 @@ async fn main() -> Result<()> {
                             log::info!("[Executor] Awaiting auto-settlement (identifier redacted) type={}", info.contract_type);
                         }
                     } else {
-                        log::warn!(
-                            "[Executor] ContractOpened without pending buy info (identifier redacted)"
-                        );
+                        risk_v2_stop("unexpected executor contract-open event requires reconciliation");
+                        let _ = cmd2.try_send(ApiCommand::RequestPortfolio);
+                        log::error!("[Executor] Unexpected ContractOpened ignored pending authoritative reconciliation");
+                        continue;
                     }
                     // Subscribe to contract updates for stop-loss/profit monitoring
                     let _ = cmd2.try_send(ApiCommand::SubscribeContract {
@@ -1753,7 +1820,7 @@ async fn main() -> Result<()> {
                             closing_contracts.remove(&contract_id);
                             executor_exposure2.write().remove(&contract_id);
                             if risk_manager_cost(&contract_id).is_some() {
-                                risk_v2_contract_closed(&contract_id, 0.0);
+                                risk_v2_contract_closed_unknown(&contract_id);
                             }
                             log::info!("Portfolio reconciliation confirmed tracked contract is closed (identifier redacted)");
                         }
@@ -1897,6 +1964,11 @@ async fn main() -> Result<()> {
                     log::warn!("[Executor] Disconnected; retaining {} open contract(s)", open_contracts.len());
                 }
                 Ok(ApiEvent::Error { code, message, request_kind, request_contract_id }) => {
+                    if request_kind.as_deref() == Some("portfolio") {
+                        risk_v2_stop("executor portfolio state uncertain; reconciliation required");
+                        log::error!("[Executor] Portfolio response rejected [{}]; retained local exposure", code);
+                        continue;
+                    }
                     if request_kind.as_deref() == Some("sell") && code == "InvalidtoSell" {
                         if let Some(contract_id) = request_contract_id.as_ref() {
                             if let Some(attempt) = closing_contracts.get_mut(contract_id) {
@@ -1920,8 +1992,11 @@ async fn main() -> Result<()> {
                     log::info!("[Executor] Channel closed");
                     break;
                 }
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    log::warn!("[Executor] Lagged {} events", n);
+                Err(error @ broadcast::error::RecvError::Lagged(n)) => {
+                    debug_assert_eq!(stream_integrity_action(&error), StreamIntegrityAction::StopAndReconcile);
+                    risk_v2_stop("executor event stream lag requires reconciliation");
+                    let _ = cmd2.try_send(ApiCommand::RequestPortfolio);
+                    log::error!("[Executor] Lagged {} events; persistent safe-stop and reconciliation engaged", n);
                 }
                 _ => {}
             }}
@@ -2265,6 +2340,62 @@ mod tests {
         assert!(!risk.is_stopped());
         let logged = sanitized_json(&serde_json::json!({"otp":"secret", "token":"secret"}));
         assert!(!logged.contains("secret"));
+    }
+
+    #[test]
+    fn lag_requires_restrictive_reconciliation_and_closed_terminates() {
+        assert_eq!(
+            stream_integrity_action(&broadcast::error::RecvError::Lagged(7)),
+            StreamIntegrityAction::StopAndReconcile
+        );
+        assert_eq!(
+            stream_integrity_action(&broadcast::error::RecvError::Closed),
+            StreamIntegrityAction::Terminate
+        );
+    }
+
+    #[test]
+    fn unexpected_contract_open_is_not_correlated_for_exposure_mutation() {
+        assert!(contract_open_is_correlated(
+            TradeState::BuyPending,
+            false,
+            Some("proposal-1"),
+            Some("proposal-1")
+        ));
+        assert!(!contract_open_is_correlated(
+            TradeState::CollectingTicks,
+            false,
+            Some("proposal-1"),
+            Some("proposal-1")
+        ));
+        assert!(!contract_open_is_correlated(
+            TradeState::BuyPending,
+            true,
+            Some("proposal-1"),
+            Some("proposal-1")
+        ));
+        assert!(!contract_open_is_correlated(
+            TradeState::BuyPending,
+            false,
+            Some("proposal-1"),
+            Some("proposal-2")
+        ));
+        assert!(!contract_open_is_correlated(
+            TradeState::BuyPending,
+            false,
+            Some("proposal-1"),
+            None
+        ));
+    }
+
+    #[test]
+    fn unknown_settlement_pnl_is_explicitly_null_never_zero() {
+        let details = unknown_settlement_details("contract-42");
+        assert_eq!(details["trade_pnl_minor"], serde_json::Value::Null);
+        assert_ne!(details["trade_pnl_minor"], serde_json::json!(0));
+        assert!(details["reason"]
+            .as_str()
+            .is_some_and(|reason| !reason.is_empty()));
     }
 
     #[test]
@@ -2704,15 +2835,15 @@ mod tests {
     async fn buy_response_preserves_confirmed_entry_price() {
         let (tx, mut rx) = broadcast::channel(4);
         handle_ws_message(
-            r#"{"msg_type":"buy","buy":{"contract_id":"42","buy_price":"1.25"}}"#,
+            r#"{"msg_type":"buy","buy":{"contract_id":"42","buy_price":"1.25"},"echo_req":{"buy":"proposal-1","passthrough":{"kind":"buy","proposal_id":"proposal-1"}}}"#,
             &tx,
         )
         .await
         .unwrap();
         assert!(matches!(
             rx.recv().await.unwrap(),
-            ApiEvent::ContractOpened { contract_id, buy_price: Some(price) }
-                if contract_id == "42" && price == 1.25
+            ApiEvent::ContractOpened { contract_id, buy_price: Some(price), proposal_id: Some(proposal_id) }
+                if contract_id == "42" && price == 1.25 && proposal_id == "proposal-1"
         ));
     }
 

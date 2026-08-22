@@ -25,6 +25,7 @@ data/provenance/private/
 # Local historical data is not a transferable source asset by default
 data/history/
 *.csv
+!fixtures/synthetic/*.csv
 
 # Tool caches
 __pycache__/

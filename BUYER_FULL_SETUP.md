@@ -18,7 +18,7 @@ docker compose version
 cargo run --locked --bin deriv_ops -- release-readiness
 ```
 
-A clean evaluation must pass formatting, all-target compilation, strict Clippy, 104+ tests, live-feature compilation without execution, deterministic fixture verification, and Compose validation. Test totals can legitimately increase.
+A clean evaluation must pass formatting, all-target compilation, strict Clippy, 110 tests, live-feature compilation without execution, deterministic fixture verification, and Compose validation. Test totals can legitimately increase.
 
 ## 2. Files and binaries
 
@@ -189,7 +189,7 @@ Never use `docker compose down -v` as a routine stop: it deletes risk, audit, an
 
 ## 8. Operator and viewer behavior
 
-Caddy Basic Auth identity `Denu` is the operator and may reach POST controls. `Buyer` is read-only and receives 403 for control/emergency routes. Change these deployment-specific usernames if required and update the Caddy matchers consistently.
+Caddy Basic Auth identity `Operator` is the operator and may reach POST controls. `Buyer` is read-only and receives 403 for control/emergency routes. Change these deployment-specific usernames if required and update the Caddy matchers consistently.
 
 Before any start: inspect saved stake/loss values, supervisor idle state, emergency/stop latches, broker exposure, token expiry, history mount, and account type. Use graceful stop first. Emergency stop is a persistent safety latch, not a normal pause button.
 

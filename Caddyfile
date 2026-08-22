@@ -1,9 +1,8 @@
 {
     admin off
-    default_sni 136.85.28.150
 }
 
-136.85.28.150 {
+{$DERIV_PUBLIC_HOST:localhost} {
     tls {
         issuer acme {
             profile shortlived
@@ -13,7 +12,7 @@
     encode zstd gzip
 
     basic_auth {
-        Denu {$DASHBOARD_ADMIN_HASH}
+        Operator {$DASHBOARD_ADMIN_HASH}
         Buyer {$DASHBOARD_BUYER_HASH}
     }
 

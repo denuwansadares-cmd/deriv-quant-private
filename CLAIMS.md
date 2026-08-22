@@ -6,15 +6,19 @@ This file freezes the claims that may be made about this repository. A feature m
 
 Resolve this before distributing or selling the product or its data.
 
-The operator reported on 2026-08-06 that Deriv support confirmed the supplied historical data may be retained long term without a separate licence. Preserve that support evidence and re-check current terms when the acquisition method or intended use changes. The operator reports that Deriv also confirmed transfer of the historical data for the stated use; retain the original confirmation as evidence.
+The operator reported on 2026-08-06 that Deriv support confirmed the supplied historical data may be retained long term without a separate licence. Preserve that support evidence and re-check current terms when the acquisition method or intended use changes. No permission to redistribute or transfer the raw dataset is recorded in this repository; any such permission requires separate, current evidence.
 
 No historical market dataset, raw WebSocket archive, Deriv credential, API entitlement, or permission to redistribute Deriv content is included merely because this source code is transferred. A buyer must complete independent legal and licensing due diligence against the current [Deriv terms and conditions](https://deriv.com/terms-and-conditions/) and applicable law.
 
 This repository does not provide legal advice.
 
+## Owner attestations
+
+- **Operational history — OWNER ATTESTATION REQUIRED:** the operator reports six months of Deriv demo-account testing and prior live-account use. Repository evidence does not independently establish duration, execution, profitability, win rate, production readiness, or current broker-account records.
+- **Dataset support statement — OWNER ATTESTATION REQUIRED:** preserve and independently review the original provider conversation. It does not establish redistribution or buyer-transfer rights.
+
 ## Active and tested
 
-- **Operator-reported operational history:** the operator reports that the bot was tested on a Deriv demo account for six months and was also used for live trading. This is a usage-history statement only; no live duration, profitability, win rate, production readiness, or independent validation is claimed.
 - **Multi-family configured default:** `BASELINE_RANDOM_MODE`, `ENABLE_RANDOM_CONTRACT_FAMILIES`, and `ENABLE_RISE_FALL` are enabled. Selection covers ACCU, Over/Under, Matches/Differs, and Rise/Fall; Rise/Fall still requires its historical directional-validation gate.
 - **Explicit account-mode flow:** demo remains the default. Live mode requires an exact real-money acknowledgement, selects only a non-virtual account, and validates a real WebSocket endpoint. Simulation does not connect to the broker.
 - **Trading state and execution controls:** the code implements a one-open-contract state guard, request timeouts, heartbeat/stale-connection handling, entry pacing, sell retries, and session-loss controls.
@@ -24,7 +28,7 @@ This repository does not provide legal advice.
 - **Decision journal:** metadata-only JSON Lines records cover version/config/dataset/seed context, normalized identifiers, model decisions, state transitions, order dispatch/results, latency, recovery action, and P&L calculations. The journal is conservatively purged after 24 hours pending legal review.
 - **Balance-derived stake policy:** the risk engine derives its base stake from 1% of the verified demo balance, clamps it to an absolute $100 maximum and $1 minimum, and reduces it monotonically with signal risk and drawdown. API stake values are produced from integer minor units.
 - **Local CSV ingestion and market ranking:** a CSV loader and ranking logic are implemented and unit-tested with synthetic fixtures. Operator-held Deriv history may be retained and used locally under the reported support confirmation; dataset currency, completeness, and transferability are separate questions.
-- **Verification baseline:** formatting validation, strict Clippy, a locked all-target build, and all 104 tests pass as of 2026-08-21. No test failed or was ignored. Synthetic and engineering tests are not evidence that a locked holdout evaluation has been completed.
+- **Verification baseline:** formatting validation, strict Clippy, a locked all-target build, and all 111 tests pass as verified locally on 2026-08-22. No test failed or was ignored. Synthetic and engineering tests are not evidence that a locked holdout evaluation has been completed.
 
 These statements describe code paths and automated tests only. They do not establish profitability, production safety, regulatory compliance, or suitability for real-money trading.
 

@@ -1,16 +1,16 @@
 # Atrium submission engineering audit
 
-Updated: 2026-08-21. This is an engineering due-diligence record, not legal advice. Conditional findings and manual actions must not be represented as cleared.
+Updated: 2026-08-22. This is an engineering due-diligence record, not legal advice. Conditional findings and manual actions must not be represented as cleared.
 
 ## Current result
 
 | Area | Status | Evidence and required action |
 |---|---|---|
-| Repository history | **PASS** | Git history is available. The reachable `main` history contains 13 commits spanning 2026-08-03 through 2026-08-21. No history was rewritten. |
-| Secrets scan | **PASS FOR REACHABLE HISTORY** | Gitleaks scanned all 13 reachable commits with redaction enabled and found no secrets. The scan used a read-only repository mount with container networking disabled. |
+| Repository history | **PASS** | Git history is available. The reachable `main` history contains 16 commits spanning 2026-08-03 through 2026-08-22. No history was rewritten. |
+| Secrets scan | **PASS — FULL REACHABLE HISTORY** | Gitleaks 8.30.1 scanned all 16 commits reachable from all 2 refs at HEAD `296985c266890227fa29b39919dfd9e8bf1ce0bd`, with redaction enabled, a read-only repository mount, and container networking disabled. No leaks were found. This does not prove ignored local credentials have been rotated. |
 | Local credentials | **MANUAL ACTION** | Ignored local credential files were not read and are not part of the tracked submission. Credential rotation or revocation remains a manual seller action and must not be marked complete without seller confirmation. |
-| Verification | **PASS** | On 2026-08-21, formatting, the offline locked all-target build, strict Clippy with warnings denied, and the complete offline suite passed: 104 passed, 0 failed, 0 ignored. |
-| Third-party inventory | **CONDITIONAL** | `Cargo.lock` contains one local root package and 217 registry packages. The headerless notice TSV contains 217 matching registry package identities. The all-target CycloneDX SBOM contains 217 library components. Preserve notices and obtain appropriate legal review of distribution obligations. |
+| Verification | **PASS** | On 2026-08-22, formatting, the offline locked all-target build, strict Clippy with warnings denied, and the complete offline suite passed: 111 passed, 0 failed, 0 ignored. |
+| Third-party inventory | **RECONCILED; LEGAL REVIEW REQUIRED** | Cargo metadata, the headerless inventory TSV, the all-target SBOM, and the generated notice bundle reconcile at exactly 217/217/217 identities/components/sections. `defmt-parser 1.0.0` contains no packaged licence text and remains explicitly marked for manual review; licence alternatives are preserved without selecting one. |
 | Transaction rights | **SEPARATE AGREEMENT REQUIRED** | This appraisal repository does not independently grant rights. Rights, price, and permitted use are governed only by a separately accepted written transaction agreement. See `SUBMISSION_SCOPE.md`. |
 | Dataset rights | **NOT INCLUDED OR VERIFIED HERE** | Historical datasets and the removed private audit reports are not part of the submission. Any future dataset transfer requires separate, current evidence of the relevant rights. |
 

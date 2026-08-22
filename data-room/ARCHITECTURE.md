@@ -514,7 +514,7 @@ flowchart LR
 | `dashboard` | `deriv_platform` on internal port 8080 | Read/write risk control state; read-only audit journal |
 | `caddy` | Public TLS, Basic Auth, operator/viewer authorization | Caddy certificate/config volumes; no trading credentials |
 
-Caddy exposes ports 80/443 and the dashboard is only `expose`d internally. The configured public address and ACME behavior in `Caddyfile` are deployment-specific and must be changed before deployment to another host. Caddy maps `Denu` to operator controls and `Buyer` to read-only access. `.dashboard.env` supplies password hashes and upstream operator/CSRF values; its operator values must exactly match `DERIV_DASHBOARD_TOKEN` and `DERIV_DASHBOARD_CSRF_TOKEN` supplied to the dashboard service. All secret files are ignored.
+Caddy exposes ports 80/443 and the dashboard is only `expose`d internally. The configured public address and ACME behavior in `Caddyfile` are deployment-specific and must be changed before deployment to another host. Caddy maps `Operator` to operator controls and `Buyer` to read-only access. `.dashboard.env` supplies password hashes and upstream operator/CSRF values; its operator values must exactly match `DERIV_DASHBOARD_TOKEN` and `DERIV_DASHBOARD_CSRF_TOKEN` supplied to the dashboard service. All secret files are ignored.
 
 ### Exhaustive configuration groups
 

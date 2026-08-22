@@ -336,6 +336,7 @@ struct PendingBuyInfo {
     proposed_price: f64,
     entry_tick_epoch: u64,
     contract_type: ContractType,
+    proposal_id: String,
 }
 fn random_unit() -> f64 {
     OsRng.next_u64() as f64 / u64::MAX as f64

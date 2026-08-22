@@ -3,6 +3,7 @@ name = "deriv_bot"
 version = "1.0.0"
 edition = "2021"
 description = "Deriv Accumulate Auto-Trading Bot"
+publish = false
 autobins = false
 default-run = "deriv_bot"
 

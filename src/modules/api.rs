@@ -67,6 +67,7 @@ enum ApiEvent {
     ContractOpened {
         contract_id: String,
         buy_price: Option<f64>,
+        proposal_id: Option<String>,
     },
     ContractSold {
         contract_id: String,
@@ -525,13 +526,18 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
     }
 
     if let Some(portfolio) = v.get("portfolio") {
-        let contracts = portfolio
-            .get("contracts")
-            .and_then(|value| value.as_array())
-            .map(|items| {
-                items
+        let Some(items) = portfolio.get("contracts").and_then(|value| value.as_array()) else {
+            let _ = event_tx.send(ApiEvent::Error {
+                code: "MalformedPortfolio".to_string(),
+                message: "portfolio response failed closed".to_string(),
+                request_kind: Some("portfolio".to_string()),
+                request_contract_id: None,
+            });
+            return Ok(());
+        };
+        let contracts = items
                     .iter()
-                    .filter_map(|item| {
+                    .map(|item| {
                         let contract_id = item
                             .get("contract_id")
                             .map(json_contract_id)
@@ -547,11 +553,11 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
                         let contract_type = item.get("contract_type").and_then(|v| v.as_str()).map(str::to_string);
                         let proposal_id = item.get("proposal_id").and_then(|v| v.as_str()).map(str::to_string);
                         let transaction_id = item.get("transaction_id").map(json_contract_id).filter(|v| !v.is_empty());
-                        (!contract_id.is_empty()
+                        if !contract_id.is_empty()
                             && !symbol.is_empty()
                             && buy_price.is_finite()
-                            && buy_price > 0.0)
-                            .then_some(PortfolioContract {
+                            && buy_price > 0.0 {
+                            Some(PortfolioContract {
                                 contract_id,
                                 symbol,
                                 buy_price,
@@ -560,10 +566,20 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
                                 proposal_id,
                                 transaction_id,
                             })
+                        } else {
+                            None
+                        }
                     })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+                    .collect::<Option<Vec<_>>>();
+        let Some(contracts) = contracts else {
+            let _ = event_tx.send(ApiEvent::Error {
+                code: "MalformedPortfolio".to_string(),
+                message: "portfolio response contained an invalid contract".to_string(),
+                request_kind: Some("portfolio".to_string()),
+                request_contract_id: None,
+            });
+            return Ok(());
+        };
         let _ = event_tx.send(ApiEvent::Portfolio(contracts));
         return Ok(());
     }
@@ -613,12 +629,19 @@ async fn handle_ws_message(text: &str, event_tx: &broadcast::Sender<ApiEvent>) -
             .or_else(|| buy.get("price"))
             .map(json_f64)
             .filter(|price| price.is_finite() && *price > 0.0);
+        let proposal_id = v
+            .pointer("/echo_req/passthrough/proposal_id")
+            .or_else(|| v.pointer("/echo_req/buy"))
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
         if contract_id.is_empty() {
             log::warn!("Ignoring buy success without contract identifier (request identifier redacted)");
         } else {
             let _ = event_tx.send(ApiEvent::ContractOpened {
                 contract_id,
                 buy_price,
+                proposal_id,
             });
         }
         return Ok(());
