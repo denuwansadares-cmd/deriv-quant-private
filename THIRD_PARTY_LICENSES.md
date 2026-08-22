@@ -1,6 +1,6 @@
 # Third-party dependency licences
 
-Generated from and reconciled against the locked Cargo dependency graph on 2026-08-21. This inventory reports crate metadata; it is not legal advice and does not replace bundled licence texts or notice obligations.
+Generated from and reconciled against the locked Cargo dependency graph on 2026-08-22. This inventory reports crate metadata; it is not legal advice and does not replace bundled licence texts or notice obligations.
 
 - Locked registry packages: 217
 - Packages missing a Cargo licence expression: 0
@@ -17,10 +17,12 @@ rg -c "^source = \"registry\+" Cargo.lock
 wc -l THIRD_PARTY_LICENSES.tsv
 CARGO_NET_OFFLINE=true cargo cyclonedx --target all --format json --override-filename deriv_bot.cdx --quiet
 CARGO_NET_OFFLINE=true cargo run --offline --locked --bin deriv_ops -- normalize-sbom
+CARGO_NET_OFFLINE=true cargo run --offline --locked --bin deriv_ops -- generate-notices
+rg -c '^## `[^`]+` `[0-9]' THIRD_PARTY_NOTICES.md
 jq ".components | length" deriv_bot.cdx.json
 ```
 
-Compound expressions must be evaluated under the licence option actually selected for distribution. Regenerate this inventory whenever `Cargo.lock` changes.
+`THIRD_PARTY_NOTICES.md` contains 217 deterministic component sections. It retains each identity, source, declared expression, and packaged top-level licence/NOTICE/attribution text. Of 217 components, 216 supplied such a file; `defmt-parser 1.0.0` is explicitly marked for manual review because its package supplied none. Compound expressions must be evaluated under the licence option actually selected for distribution. Regenerate this inventory whenever `Cargo.lock` changes.
 
 | Package | Version | Licence expression | Repository |
 |---|---:|---|---|

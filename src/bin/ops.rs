@@ -50,19 +50,82 @@ fn copy_file(from: &Path, to: &Path) -> Result {
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::copy(from, to)?;
+    let mut source = fs::File::open(from)?;
+    let mut destination = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(to)?;
+    io::copy(&mut source, &mut destination)?;
+    destination.sync_all()?;
     Ok(())
 }
-fn copy_tree(from: &Path, to: &Path) -> Result {
-    fs::create_dir_all(to)?;
-    for entry in fs::read_dir(from)? {
-        let entry = entry?;
-        let target = to.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_tree(&entry.path(), &target)?;
-        } else {
-            copy_file(&entry.path(), &target)?;
+fn is_delivery_source(path: &Path) -> bool {
+    if path
+        .components()
+        .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return false;
+    }
+    const FILES: [&str; 19] = [
+        "Cargo.toml",
+        "Cargo.lock",
+        "Dockerfile",
+        "docker-compose.yml",
+        "Caddyfile",
+        "README.md",
+        "PRODUCT_API.md",
+        "BACKTESTING.md",
+        "CLAIMS.md",
+        "BUYER_ONBOARDING.md",
+        "BUYER_FULL_SETUP.md",
+        "BUYER_FULL_SETUP_SI.md",
+        "BUYER_EVIDENCE_INDEX.md",
+        "RELEASE_READINESS.md",
+        "DEMO_SCRIPT.md",
+        "SUBMISSION_SCOPE.md",
+        "deny.toml",
+        "about.toml",
+        "about.hbs",
+    ];
+    FILES.iter().any(|candidate| path == Path::new(candidate))
+        || ["src", "config", "schemas", "web", "fixtures"]
+            .iter()
+            .any(|prefix| path.starts_with(prefix))
+}
+fn copy_tracked_source(root: &Path, destination: &Path) -> Result {
+    let output = Command::new("git")
+        .args([
+            "-C",
+            root.to_str().ok_or("non-UTF-8 repository root")?,
+            "ls-files",
+            "-z",
+        ])
+        .output()?;
+    ensure(output.status, "git ls-files")?;
+    let mut copied = 0usize;
+    for raw in output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+    {
+        let relative = PathBuf::from(std::str::from_utf8(raw)?);
+        if !is_delivery_source(&relative) {
+            continue;
         }
+        let source = root.join(&relative);
+        let metadata = fs::symlink_metadata(&source)?;
+        if !metadata.file_type().is_file() {
+            return Err(format!(
+                "delivery source is not a regular file: {}",
+                relative.display()
+            )
+            .into());
+        }
+        copy_file(&source, &destination.join(&relative))?;
+        copied += 1;
+    }
+    if copied == 0 {
+        return Err("delivery source allowlist selected no tracked files".into());
     }
     Ok(())
 }
@@ -369,7 +432,11 @@ fn release_readiness(root: &Path) -> Result {
         "PRODUCT_API.md",
         "SECURITY_EVIDENCE.md",
         "CLAIMS.md",
+        "BUYER_EVIDENCE_INDEX.md",
+        "RELEASE_READINESS.md",
+        "DEMO_SCRIPT.md",
         "THIRD_PARTY_LICENSES.md",
+        "THIRD_PARTY_NOTICES.md",
         "deriv_bot.cdx.json",
         "Dockerfile",
         "docker-compose.yml",
@@ -392,7 +459,14 @@ fn release_readiness(root: &Path) -> Result {
     }
     println!("[3/5] Rust regression and live-build gate");
     run("cargo", &["fmt", "--all", "--", "--check"])?;
-    run("cargo", &["check", "--locked", "--all-targets"])?;
+    run(
+        "cargo",
+        &["check", "--locked", "--workspace", "--all-targets"],
+    )?;
+    run(
+        "cargo",
+        &["build", "--locked", "--workspace", "--all-targets"],
+    )?;
     run(
         "cargo",
         &[
@@ -404,16 +478,44 @@ fn release_readiness(root: &Path) -> Result {
             "warnings",
         ],
     )?;
-    run("cargo", &["test", "--locked", "--all-targets"])?;
+    run(
+        "cargo",
+        &["test", "--locked", "--workspace", "--all-targets"],
+    )?;
     run(
         "cargo",
         &[
             "check",
             "--locked",
+            "--workspace",
+            "--all-targets",
             "--features",
             "live-trading",
-            "--bin",
-            "deriv_bot",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "clippy",
+            "--locked",
+            "--workspace",
+            "--all-targets",
+            "--features",
+            "live-trading",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    )?;
+    run(
+        "cargo",
+        &[
+            "test",
+            "--locked",
+            "--workspace",
+            "--all-targets",
+            "--features",
+            "live-trading",
         ],
     )?;
     println!("[4/5] Deterministic fixture");
@@ -483,6 +585,81 @@ fn buyer_evaluate(root: &Path) -> Result {
     println!("PASS: engineering evaluation complete; no profitability/live approval inferred");
     Ok(())
 }
+fn html_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+fn generate_notices(root: &Path) -> Result {
+    let cargo_home = env::var_os("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
+        .ok_or("CARGO_HOME and HOME are unavailable")?;
+    let registry = cargo_home.join("registry/src");
+    let mut registry_roots = fs::read_dir(&registry)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    registry_roots.sort();
+    let inventory = fs::read_to_string(root.join("THIRD_PARTY_LICENSES.tsv"))?;
+    let mut rows = inventory
+        .lines()
+        .map(|line| line.split('\t').collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    if rows.len() != 217 || rows.iter().any(|row| row.len() != 4) {
+        return Err("third-party inventory must contain exactly 217 four-column rows".into());
+    }
+    rows.sort_by(|left, right| (left[0], left[1]).cmp(&(right[0], right[1])));
+    let mut output = String::from("# Third-party distribution notices\n\nGenerated deterministically from `Cargo.lock`, `THIRD_PARTY_LICENSES.tsv`, and the checksum-verified local Cargo registry. Licence expressions are preserved as declared; inclusion does not select an `OR` alternative or provide legal advice. Copyright and attribution below belong to their respective third-party authors.\n\n");
+    let mut without_packaged_text = Vec::new();
+    for row in rows {
+        let (name, version, expression, source) = (row[0], row[1], row[2], row[3]);
+        let directory_name = format!("{name}-{version}");
+        let crate_dir = registry_roots
+            .iter()
+            .map(|registry_root| registry_root.join(&directory_name))
+            .find(|candidate| candidate.is_dir())
+            .ok_or_else(|| format!("locked crate source unavailable: {directory_name}"))?;
+        let mut files = fs::read_dir(&crate_dir)?
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+            .filter(|entry| {
+                let name = entry.file_name().to_string_lossy().to_ascii_uppercase();
+                ["LICENSE", "COPYING", "NOTICE", "AUTHORS", "COPYRIGHT"]
+                    .iter()
+                    .any(|prefix| name.starts_with(prefix))
+            })
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        files.sort();
+        output.push_str(&format!("## `{name}` `{version}`\n\n- Source: {source}\n- Declared licence expression: `{expression}`\n"));
+        if files.is_empty() {
+            without_packaged_text.push(format!("{name} {version}"));
+            output.push_str("- Packaged licence/NOTICE files: none; **MANUAL REVIEW REQUIRED**. The declared MIT/Apache alternatives are reproduced by other components in this bundle, but the crate package itself supplied no licence file.\n\n");
+        } else {
+            output.push_str("- Packaged licence/NOTICE files follow.\n\n");
+            for file in files {
+                let relative = file.strip_prefix(&crate_dir)?;
+                let bytes = fs::read(&file)?;
+                let text = std::str::from_utf8(&bytes)
+                    .map_err(|_| format!("non-UTF-8 notice file: {}", relative.display()))?;
+                output.push_str(&format!(
+                    "### `{}`\n\n<pre>{}</pre>\n\n",
+                    relative.display(),
+                    html_escape(text)
+                ));
+            }
+        }
+    }
+    output.push_str(&format!("## Reconciliation summary\n\n- Locked third-party components: 217\n- Notice sections: 217\n- Components without a packaged licence/NOTICE file: {}\n", without_packaged_text.len()));
+    for component in without_packaged_text {
+        output.push_str(&format!("- MANUAL REVIEW: `{component}`\n"));
+    }
+    fs::write(root.join("THIRD_PARTY_NOTICES.md"), output)?;
+    Ok(())
+}
+
 fn package(root: &Path) -> Result {
     env::set_current_dir(root)?;
     let licence = env::var("FINAL_BUYER_LICENCE")
@@ -514,30 +691,12 @@ fn package(root: &Path) -> Result {
     for dir in ["source", "evidence", "legal", "media"] {
         fs::create_dir_all(stage.join(dir))?;
     }
-    for item in [
-        "Cargo.toml",
-        "Cargo.lock",
-        "Dockerfile",
-        "docker-compose.yml",
-        "Caddyfile",
-        "README.md",
-        "PRODUCT_API.md",
-        "BACKTESTING.md",
-        "CLAIMS.md",
-        "BUYER_ONBOARDING.md",
-        "BUYER_FULL_SETUP.md",
-        "BUYER_FULL_SETUP_SI.md",
-        "SUBMISSION_SCOPE.md",
-    ] {
-        copy_file(&root.join(item), &stage.join("source").join(item))?;
-    }
-    for item in ["src", "config", "schemas", "web", "fixtures"] {
-        copy_tree(&root.join(item), &stage.join("source").join(item))?;
-    }
+    copy_tracked_source(root, &stage.join("source"))?;
     for item in [
         "SECURITY_EVIDENCE.md",
         "THIRD_PARTY_LICENSES.md",
         "THIRD_PARTY_LICENSES.tsv",
+        "THIRD_PARTY_NOTICES.md",
     ] {
         copy_file(&root.join(item), &stage.join("evidence").join(item))?;
     }
@@ -569,6 +728,13 @@ fn package(root: &Path) -> Result {
     let stage_s = stage.to_string_lossy();
     let archive_s = archive.to_string_lossy();
     run("tar", &["-C", &stage_s, "-czf", &archive_s, "."])?;
+    let extracted = temporary("data-room-extracted");
+    fs::create_dir_all(&extracted)?;
+    let extracted_s = extracted.to_string_lossy();
+    run("tar", &["-C", &extracted_s, "-xzf", &archive_s])?;
+    buyer_evaluate(&extracted)?;
+    fs::remove_dir_all(extracted)?;
+    env::set_current_dir(root)?;
     run("sha256sum", &[&archive_s])?;
     fs::remove_dir_all(stage)?;
     println!("{}", archive.display());
@@ -576,7 +742,7 @@ fn package(root: &Path) -> Result {
 }
 fn usage() {
     eprintln!(
-        "usage: deriv_ops <release-readiness|reproducible-build|buyer-evaluate|normalize-sbom|package-data-room>"
+        "usage: deriv_ops <release-readiness|reproducible-build|buyer-evaluate|normalize-sbom|generate-notices|package-data-room>"
     );
 }
 fn main() -> Result {
@@ -587,6 +753,7 @@ fn main() -> Result {
         "reproducible-build" => reproducible_build(&root),
         "buyer-evaluate" => buyer_evaluate(&root),
         "normalize-sbom" => normalize_sbom_file(&root),
+        "generate-notices" => generate_notices(&root),
         "package-data-room" => package(&root),
         _ => {
             usage();
@@ -598,6 +765,69 @@ fn main() -> Result {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn delivery_allowlist_excludes_untracked_and_unlisted_files() {
+        assert!(!is_delivery_source(Path::new("../src/main.rs")));
+        assert!(!is_delivery_source(Path::new("src/../private.txt")));
+        assert!(!is_delivery_source(Path::new("/src/main.rs")));
+        let root = temporary("ops-package-source-test");
+        let destination = temporary("ops-package-destination-test");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("fixtures/synthetic")).unwrap();
+        fs::write(root.join("Cargo.toml"), b"tracked root").unwrap();
+        fs::write(root.join("src/main.rs"), b"tracked source").unwrap();
+        fs::write(root.join("src/private.log"), b"untracked secret").unwrap();
+        fs::write(
+            root.join("fixtures/synthetic/private.csv"),
+            b"untracked data",
+        )
+        .unwrap();
+        fs::write(root.join("UNLISTED.md"), b"tracked but unlisted").unwrap();
+        assert!(Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&root)
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("git")
+            .args(["add", "Cargo.toml", "src/main.rs", "UNLISTED.md"])
+            .current_dir(&root)
+            .status()
+            .unwrap()
+            .success());
+        copy_tracked_source(&root, &destination).unwrap();
+        assert_eq!(
+            fs::read(destination.join("Cargo.toml")).unwrap(),
+            b"tracked root"
+        );
+        assert_eq!(
+            fs::read(destination.join("src/main.rs")).unwrap(),
+            b"tracked source"
+        );
+        assert!(!destination.join("src/private.log").exists());
+        assert!(!destination.join("fixtures/synthetic/private.csv").exists());
+        assert!(!destination.join("UNLISTED.md").exists());
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(destination).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn package_copy_rejects_destination_symlink_escape() {
+        use std::os::unix::fs::symlink;
+        let root = temporary("ops-package-symlink-test");
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("source");
+        let outside = root.join("outside");
+        let destination = root.join("destination");
+        fs::write(&source, b"package content").unwrap();
+        fs::write(&outside, b"outside remains unchanged").unwrap();
+        symlink(&outside, &destination).unwrap();
+        assert!(copy_file(&source, &destination).is_err());
+        assert_eq!(fs::read(&outside).unwrap(), b"outside remains unchanged");
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn required_asset_rejects_missing_and_empty_files() {
         let path = temporary("ops-require-test");

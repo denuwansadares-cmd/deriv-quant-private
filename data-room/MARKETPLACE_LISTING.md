@@ -23,7 +23,7 @@ The product is intended for a technical buyer who wants to evaluate, extend, reb
 - Reconnect, uncertain-buy portfolio reconciliation, sell retry, heartbeat, and watchdog paths.
 - Deterministic simulation with seeded replay, virtual time, replay hashes, fault injection, and hypothetical metrics.
 - Authenticated local command center with viewer mode, CSRF controls, rate limiting, action audit, telemetry, and emergency stop.
-- 104 automated tests passing with zero failures and zero ignored tests as verified on 2026-08-21.
+- 110 automated tests passing with zero failures and zero ignored tests as verified locally on 2026-08-22.
 - Formatting, all-target compilation, strict Clippy, live-feature compilation, dashboard syntax, and deterministic-fixture checks pass through `cargo run --locked --bin deriv_ops -- release-readiness`.
 - Docker, Caddy, English and Sinhala setup guides, API documentation, SBOM, dependency notices, threat model, claims register, and buyer evaluation workflow included.
 
@@ -43,7 +43,7 @@ Experimental software infrastructure only. No profitability, win rate, future re
 2. Risk configuration and live-readiness gates, with credentials excluded.
 3. Decision-provenance feed and settled-session chart.
 4. Deterministic simulation report and replay hash.
-5. Test run showing 104 passing tests, zero failures, and zero ignored tests.
+5. Test run showing 110 passing tests, zero failures, and zero ignored tests.
 6. Architecture and buyer data-room overview.
 7. Docker deployment and health-check demonstration.
 

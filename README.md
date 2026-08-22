@@ -56,12 +56,12 @@ This asset is best suited to a buyer seeking:
 At the current workspace revision:
 
 - **Seller-reported operating history:** six months of Deriv demo-account testing and prior live-account use. The repository does not independently prove elapsed duration, profitability, win rate, return, or production readiness.
-- **Reproducible demo evidence:** authenticated dashboard start/stop, demo-account selection, OTP WebSocket connection, proposal, buy, contract monitoring, settlement, P&L journalling, and emergency-stop behavior have been exercised end to end.
+- **Connected demo evidence — OWNER ATTESTATION REQUIRED:** the repository verifies offline lifecycle and control behavior, but contains no sanitized exact-commit artifact proving a connected Deriv demo proposal/buy/settlement run.
 - **Reproducible live-path evidence:** the live feature compiles and its account-selection, acknowledgement, risk-configuration, authorization, and fail-closed control paths are verified. A real-money trade was intentionally not submitted during the latest deployment verification; historical live evidence is a separate due-diligence item.
 - All maintained executable implementation is Rust, including runtime, supervision, release operations, history auditing, and in-source tests.
 - HTML and CSS remain presentation templates; JSON, Markdown, YAML, and TOML remain interoperable data, documentation, and configuration formats.
 - Trading/research core: 2,589 lines across models, strategy, qualification, mathematics, risk engines, and backtesting.
-- Automated test result: 104 passed, 0 failed, 0 ignored across the maintained Rust targets (verified 2026-08-21).
+- Automated test result: 111 passed, 0 failed, 0 ignored across the maintained Rust targets (verified locally 2026-08-22).
 - `cargo check --all-targets`, formatting validation, and strict Clippy with warnings denied pass locally.
 
 Line counts describe implementation scope, not software quality, profitability, or market value. The reproducible checks and disclosed limitations are the more important buyer evidence.
@@ -510,14 +510,14 @@ cargo test --release
 
 An external-history test is ignored when the operator-held dataset is unavailable in the test environment. Synthetic fixtures test mechanics; they do not demonstrate market performance.
 
-Current verified local result: **104 tests passed, 0 failed, 0 ignored** across all seven Rust binaries. Test totals can change as the product evolves; regenerate and preserve a dated test report for the final buyer delivery.
+Current verified local result: **111 tests passed, 0 failed, 0 ignored** across all seven Rust binaries. Test totals can change as the product evolves; regenerate and preserve a dated test report for the final buyer delivery.
 ### Evidence classification
 
 | Statement | Classification |
 |---|---|
-| 104-test result and live-feature build | Reproducible in the repository |
+| 111-test result and live-feature build | Reproducible in the repository |
 | Current dashboard/API HTTPS checks | Deployment verification; repeat during buyer acceptance |
-| End-to-end demo proposal/buy/settlement exercise | Current deployment evidence and redacted logs |
+| End-to-end connected demo proposal/buy/settlement exercise | OWNER ATTESTATION REQUIRED; no sanitized exact-commit artifact is included |
 | Six months of demo testing | Seller-reported; broker records required for independent verification |
 | Historical live-account use | Seller-reported; review redacted broker evidence separately |
 | Profitability, future return, or production readiness | Not claimed |

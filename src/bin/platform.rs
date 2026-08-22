@@ -819,6 +819,62 @@ fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn request_once(request: &str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let attempts: Attempts = Arc::new(Mutex::new(HashMap::new()));
+        let server_attempts = Arc::clone(&attempts);
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            handle(stream, &server_attempts).unwrap();
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client.write_all(request.as_bytes()).unwrap();
+        client.shutdown(std::net::Shutdown::Write).unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        server.join().unwrap();
+        response
+    }
+
+    #[test]
+    fn endpoint_level_read_only_and_authorization_policy_is_enforced() {
+        for path in [
+            "/",
+            "/index.html",
+            "/style.css",
+            "/api/v1/status",
+            "/api/v1/control/config",
+            "/api/v1/telemetry",
+            "/api/v1/qualifications",
+        ] {
+            let response = request_once(&format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n"));
+            assert!(
+                response.starts_with("HTTP/1.1 200 OK"),
+                "GET {path}: {response}"
+            );
+        }
+        for path in [
+            "/api/v1/control/start-demo",
+            "/api/v1/control/configure-risk",
+            "/api/v1/control/start-live",
+            "/api/v1/control/stop-trading",
+            "/api/v1/control/stop-demo",
+            "/api/v1/emergency-stop",
+        ] {
+            let response = request_once(&format!(
+                "POST {path} HTTP/1.1\r\nHost: localhost\r\nX-Deriv-Role: viewer\r\n\r\n"
+            ));
+            assert!(
+                response.starts_with("HTTP/1.1 401 Unauthorized"),
+                "POST {path}: {response}"
+            );
+        }
+        let response =
+            request_once("PUT /api/v1/control/start-demo HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(response.starts_with("HTTP/1.1 404 Not Found"));
+    }
+
     #[test]
     fn constant_time_comparison_rejects_length_and_content_changes() {
         assert!(constant_time_eq("same", "same"));

@@ -332,6 +332,20 @@ fn risk_v2_contract_closed(contract_id: &str, pnl: f64) {
         persist_open_exposure();
     }
 }
+fn unknown_settlement_details(contract_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "normalized_contract_id": normalized_id(contract_id),
+        "trade_pnl_minor": serde_json::Value::Null,
+        "reason": "authoritative portfolio no longer contains tracked contract",
+    })
+}
+fn risk_v2_contract_closed_unknown(contract_id: &str) {
+    if let Some(risk) = AUTHORITATIVE_RISK.get() {
+        risk.write().safety_open_contracts.remove(contract_id);
+        persist_open_exposure();
+    }
+    journal_event("settlement_pnl_unknown", unknown_settlement_details(contract_id));
+}
 fn risk_v2_post_trade_invariants() {
     if let Some(risk) = AUTHORITATIVE_RISK.get() {
         let risk = risk.read();

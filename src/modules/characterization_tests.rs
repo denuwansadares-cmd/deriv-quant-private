@@ -327,7 +327,7 @@ async fn malformed_api_messages_are_rejected_without_trade_events() {
 }
 
 #[tokio::test]
-async fn malformed_portfolio_entries_are_filtered_individually() {
+async fn malformed_portfolio_entries_fail_the_entire_snapshot_closed() {
     let (tx, mut rx) = broadcast::channel(4);
     handle_ws_message(
         r#"{"msg_type":"portfolio","portfolio":{"contracts":[
@@ -341,13 +341,29 @@ async fn malformed_portfolio_entries_are_filtered_individually() {
     .await
     .unwrap();
     match rx.recv().await.unwrap() {
-        ApiEvent::Portfolio(contracts) => {
-            assert_eq!(contracts.len(), 1);
-            assert_eq!(contracts[0].contract_id, "good");
-            assert_eq!(contracts[0].buy_price, 1.25);
+        ApiEvent::Error {
+            code,
+            request_kind: Some(kind),
+            ..
+        } => {
+            assert_eq!(code, "MalformedPortfolio");
+            assert_eq!(kind, "portfolio");
         }
         event => panic!("unexpected event: {event:?}"),
     }
+}
+
+#[tokio::test]
+async fn partial_portfolio_shape_never_becomes_an_authoritative_empty_snapshot() {
+    let (tx, mut rx) = broadcast::channel(4);
+    handle_ws_message(r#"{"msg_type":"portfolio","portfolio":{}}"#, &tx)
+        .await
+        .unwrap();
+    assert!(matches!(
+        rx.recv().await.unwrap(),
+        ApiEvent::Error { code, request_kind: Some(kind), .. }
+            if code == "MalformedPortfolio" && kind == "portfolio"
+    ));
 }
 
 #[tokio::test]
