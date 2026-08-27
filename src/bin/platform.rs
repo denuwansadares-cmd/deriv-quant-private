@@ -1,3 +1,10 @@
+#[allow(dead_code)]
+#[path = "../stake.rs"]
+mod stake;
+use stake::{
+    live_loss_confirmation, validate_live_confirmation, HARD_MAX_STAKE_MINOR, MIN_STAKE_MINOR,
+};
+
 use std::{
     collections::HashMap,
     fs,
@@ -595,10 +602,10 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
                 &mut s,
                 "200 OK",
                 &serde_json::json!({
-                    "stake_minor": stake_minor.clamp(100, 10_000),
+                    "stake_minor": stake_minor.clamp(MIN_STAKE_MINOR, HARD_MAX_STAKE_MINOR),
                     "loss_limit_bps": loss_limit_bps.clamp(1, 2_000),
                     "max_open_contracts": 1,
-                    "hard_max_stake_minor": 10_000,
+                    "hard_max_stake_minor": HARD_MAX_STAKE_MINOR,
                     "running": fresh_heartbeat(),
                 "configured": configured,
                     "control_state": control_state
@@ -658,12 +665,16 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
                     r#"{"error":"stop_trading_before_changing_risk"}"#,
                 );
             }
-            let Some(stake_minor) = validated_header_i64(&request, "X-Stake-Minor", 100, 10_000)
-            else {
+            let Some(stake_minor) = validated_header_i64(
+                &request,
+                "X-Stake-Minor",
+                MIN_STAKE_MINOR,
+                HARD_MAX_STAKE_MINOR,
+            ) else {
                 return json(
                     &mut s,
                     "400 Bad Request",
-                    r#"{"error":"stake_must_be_between_1_and_100_usd"}"#,
+                    r#"{"error":"stake_must_be_between_1_and_1000_usd"}"#,
                 );
             };
             let Some(loss_limit_bps) = validated_header_i64(&request, "X-Loss-Limit-Bps", 1, 2_000)
@@ -696,12 +707,19 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
             }
             let acknowledged = header(&request, "X-Live-Risk-Acknowledged") == Some("true");
             let confirmed = header(&request, "X-Live-Confirmation") == Some("LIVE");
-            if !acknowledged || !confirmed {
+            let stake_minor = fs::read_to_string(risk_dir().join("configured-stake-minor"))
+                .ok()
+                .and_then(|value| value.trim().parse::<i64>().ok());
+            let stake_confirmed = stake_minor.is_some_and(|stake| {
+                validate_live_confirmation(stake, header(&request, "X-Live-Stake-Confirmation"))
+                    .is_ok()
+            });
+            if !acknowledged || !confirmed || !stake_confirmed {
                 audit(&peer, "start_live", false)?;
                 return json(
                     &mut s,
                     "400 Bad Request",
-                    r#"{"error":"live_risk_acknowledgement_and_typed_confirmation_required"}"#,
+                    r#"{"error":"live_risk_acknowledgement_LIVE_and_amount_bound_confirmation_required"}"#,
                 );
             }
             if fresh_heartbeat()
@@ -724,6 +742,11 @@ fn handle(mut s: TcpStream, attempts: &Attempts) -> std::io::Result<()> {
                     r#"{"error":"configure_risk_before_live_trading"}"#,
                 );
             }
+            let stake_minor = stake_minor.expect("validated configured stake");
+            atomic(
+                &risk_dir().join("live-stake-confirmation"),
+                live_loss_confirmation(stake_minor).as_bytes(),
+            )?;
             atomic(
                 &risk_dir().join("control-start-live"),
                 b"start live with explicit risk acknowledgement",

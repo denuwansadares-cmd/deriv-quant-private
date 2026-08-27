@@ -401,7 +401,7 @@ fn stake_policy_uses_its_balance_derived_cap_and_signal_risk() {
     assert_eq!(stake_for_signal_risk(5.0, 0.0), 5.0);
     assert_eq!(stake_for_signal_risk(5.0, 0.5), 3.0);
     assert_eq!(stake_for_signal_risk(5.0, 1.0), 1.0);
-    assert_eq!(stake_for_signal_risk(1_000.0, 0.0), 100.0);
+    assert_eq!(stake_for_signal_risk(1_000.0, 0.0), 1_000.0);
     assert_eq!(deriv_stake(1.005), 1.0);
     assert_eq!(deriv_stake(1.006), 1.01);
 }

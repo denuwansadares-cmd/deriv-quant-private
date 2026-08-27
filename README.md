@@ -237,7 +237,7 @@ Support for a contract command path does not establish that the contract is prof
 
 ## Risk management
 
-The dashboard accepts an operator-selected maximum stake from **$1.00 to $100.00** for demo and guarded live sessions. This is an absolute ceiling, not a guaranteed trade size: verified-balance sizing, open-exposure budgets, signal-risk scaling, drawdown logic, contract availability, and broker proposal limits may reduce or reject it.
+The dashboard accepts an operator-selected maximum stake from **$1.00 to $1,000.00** for demo and guarded live sessions. This is an absolute ceiling, not a guaranteed trade size: verified-balance sizing, open-exposure budgets, signal-risk scaling, drawdown logic, contract availability, and broker proposal limits may reduce or reject it.
 
 The current local `.env.example` remains a stricter $50-bankroll example profile:
 
@@ -245,7 +245,7 @@ The current local `.env.example` remains a stricter $50-bankroll example profile
 |---|---:|
 | Signal-scaled stake | $1.00-$3.00 |
 | Example profile maximum | $3.00 |
-| Product absolute ceiling | $100.00 |
+| Product absolute ceiling | $1,000.00 |
 | Maximum session loss on $50 | $5.00 |
 | Maximum open exposure | 6% |
 | Maximum open contracts | 1 |
@@ -304,7 +304,7 @@ cargo test
 5. Run demo mode:
 
 ```bash
-cargo run -- --mode demo --history /absolute/path/to/licensed/history
+cargo run -- --mode demo --stake 3.00 --history /absolute/path/to/licensed/history
 ```
 
 Never use seller credentials, commit `.env`, or place credentials in command-line arguments, logs, screenshots, support messages, or buyer packages.
@@ -341,7 +341,7 @@ All monetary values ending in `_MINOR` use currency minor units. For USD, `300` 
 
 | Variable | Description |
 |---|---|
-| `DERIV_MAX_STAKE_MINOR` | Absolute per-trade stake ceiling |
+| `DERIV_MAX_STAKE_MINOR` | Absolute per-trade stake ceiling; `--stake USD` overrides it for that run |
 | `DERIV_SESSION_LOSS_LIMIT_BPS` | Session loss limit in basis points |
 | `DERIV_MAX_OPEN_EXPOSURE_BPS` | Maximum total open exposure in basis points |
 | `DERIV_MAX_OPEN_CONTRACTS` | Must be exactly `1` |
@@ -380,7 +380,7 @@ One basis point is 0.01%; therefore 600 basis points is 6%.
 Connects to a Deriv demo/virtual Options account:
 
 ```bash
-cargo run -- --mode demo --history /path/to/history
+cargo run -- --mode demo --stake 3.00 --history /path/to/history
 ```
 
 Demo mode can still lose virtual funds and does not prove live profitability.
@@ -405,7 +405,7 @@ Live mode is protected by two independent gates:
 ```bash
 DERIV_ENABLE_LIVE_TRADING=I_UNDERSTAND_REAL_MONEY \
   cargo run --release --features live-trading -- \
-  --mode live --history /path/to/history
+  --mode live --stake 3.00 --history /path/to/history
 ```
 
 > [!CAUTION]
@@ -421,6 +421,8 @@ Both spaced and `=` forms are supported:
 --symbols R_10,R_50
 --symbols=R_10,R_50
 --symbol R_100
+--stake 3.00
+--stake=3.00
 --history /path/to/history
 --history=/path/to/history
 ```
@@ -447,17 +449,19 @@ Run the independent watchdog:
 cargo run --release --bin deriv_watchdog
 ```
 
-The dashboard provides real-time telemetry, persisted $1-$100 stake selection, session-loss configuration, authenticated demo start, guarded live start, graceful stop, and persistent emergency stop. Live start requires saved risk limits, explicit real-money acknowledgement, typed `LIVE` confirmation, an idle engine, and final confirmation. Stake bounds, one-open-contract cardinality, operator authorization, CSRF protection, token expiry, auditing, and persistent stops are enforced server-side.
+The dashboard provides real-time telemetry, persisted $1-$1,000 stake selection, session-loss configuration, authenticated demo start, guarded live start, graceful stop, and persistent emergency stop. Live start requires saved risk limits, explicit real-money acknowledgement, typed `LIVE` confirmation plus an exact amount-bound total-loss confirmation, an idle engine, and final confirmation. Stake bounds, one-open-contract cardinality, operator authorization, CSRF protection, token expiry, auditing, and persistent stops are enforced server-side.
 
 The browser never receives broker credentials. Behind the supplied authenticated TLS proxy, operator and CSRF credentials are injected server-side and must not be committed or exposed as buyer-facing secrets. During ownership transfer the buyer should provision its own domain/IP, TLS, dashboard login, operator/CSRF secrets, Deriv credentials, and cloud account.
 
 Docker deployment:
 
 ```bash
-docker compose up --build
+docker compose up --build --detach
+docker compose ps
+docker compose logs --follow --tail=200 bot watchdog
 ```
 
-Before starting Compose, configure long, separate, temporary dashboard and CSRF tokens plus a future expiry. Compose uses persistent risk/audit volumes and hardened container settings.
+The owner-operated Compose profile does not publish a dashboard or any HTTP/HTTPS ports. It starts the trading engine automatically in safe demo mode and keeps the independent watchdog, persistent risk/audit volumes, and hardened container settings. Detached mode keeps the services running when the terminal closes; press `Ctrl+C` only to leave the log viewer. Stop the stack explicitly with `docker compose down`.
 
 ## Emergency stop
 
@@ -632,6 +636,7 @@ All maintained executable implementation is Rust. HTML/CSS remain browser presen
 deriv_bot [--mode demo|live|simulation]
           [--symbols SYMBOL[,SYMBOL...]]
           [--symbol SYMBOL]
+          [--stake USD]
           --history PATH
 
 deriv_watchdog [--check]
@@ -643,7 +648,7 @@ deriv_history audit --raw DIR --normalized DIR --report FILE --manifest FILE
 deriv_history overlap --normalized DIR --audit FILE --manifest FILE --markdown FILE
 ```
 
-CLI mode/symbol/history values override their environment equivalents. `--symbols=` and `--history=` forms are accepted. Unknown `deriv_bot` arguments fail startup. Network modes require explicit history and all six risk variables. Simulation uses reviewed compiled risk defaults.
+CLI mode/symbol/history/stake values override their environment equivalents. `--symbols=` and `--history=` forms are accepted. Unknown `deriv_bot` arguments fail startup. Network modes require explicit history and all six risk variables. Simulation uses reviewed compiled risk defaults.
 
 ### Complete environment reference
 
@@ -697,7 +702,7 @@ The dashboard HTML is rendered by `deriv_platform` from the risk directory and d
 | `GET /api/v1/qualifications` | Qualification registry |
 | `POST /api/v1/control/configure-risk` | Idle only; `X-Stake-Minor` 100–10,000 and `X-Loss-Limit-Bps` 1–2,000 |
 | `POST /api/v1/control/start-demo` | Requests supervised demo start; rejected by safety latch |
-| `POST /api/v1/control/start-live` | Also requires `X-Live-Risk-Acknowledged: true` and `X-Live-Confirmation: LIVE` |
+| `POST /api/v1/control/start-live` | Also requires `X-Live-Risk-Acknowledged: true` and `X-Live-Confirmation: LIVE` and `X-Live-Stake-Confirmation: I_ACCEPT_I_CAN_LOSE_ALL_<amount>_USD` |
 | `POST /api/v1/control/stop-trading` | Requests graceful stop (`/stop-demo` is an alias) |
 | `POST /api/v1/emergency-stop` | Rate-limited persistent emergency latch |
 

@@ -1,3 +1,8 @@
+#[allow(dead_code)]
+#[path = "../stake.rs"]
+mod stake;
+use stake::validate_live_confirmation;
+
 use serde::Serialize;
 use std::{
     fs,
@@ -89,10 +94,18 @@ fn launch(dir: &Path, mode: &'static str) -> std::io::Result<Child> {
     let mut command = Command::new("deriv_bot");
     command
         .args(["--mode", mode, "--history", &history])
-        .env("DERIV_MAX_STAKE_MINOR", stake)
+        .env("DERIV_MAX_STAKE_MINOR", &stake)
         .env("DERIV_SESSION_LOSS_LIMIT_BPS", loss)
         .stdin(Stdio::null());
     if mode == "live" {
+        let stake_minor = stake
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| std::io::Error::other("invalid configured live stake"))?;
+        let confirmation = limit(dir, "live-stake-confirmation", None)?;
+        validate_live_confirmation(stake_minor, Some(&confirmation))
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        command.env("DERIV_LIVE_STAKE_CONFIRMATION", confirmation);
         command.env("DERIV_ENABLE_LIVE_TRADING", "I_UNDERSTAND_REAL_MONEY");
     }
     command.spawn()
@@ -129,6 +142,14 @@ async fn main() -> std::io::Result<()> {
     let dir = dir();
     fs::create_dir_all(&dir)?;
     let desired = dir.join("desired-demo-mode");
+    let autostart_mode = std::env::var("DERIV_AUTOSTART_MODE")
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if autostart_mode == "demo" && !blocked(&dir) {
+        atomic(&desired, b"demo\n")?;
+        println!("Trading engine autostart enabled in demo mode");
+    }
     let mut child = None;
     let mut mode = None;
     let mut interrupt = signal(SignalKind::interrupt())?;

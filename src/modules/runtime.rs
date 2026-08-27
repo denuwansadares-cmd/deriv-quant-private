@@ -16,7 +16,9 @@ fn load_env() {
 ///   --symbols=R_100,R_50
 ///   --history data/history.json
 ///   --history=data/history.json
-fn parse_args() -> (String, Vec<String>, String) {
+///   --stake 3.00
+///   --stake=3.00
+fn parse_args_from(args: &[String]) -> Result<(String, Vec<String>, String, Option<i64>)> {
     let mut mode = std::env::var("DERIV_MODE").unwrap_or_else(|_| "demo".to_string());
 
     let mut symbols = std::env::var("DERIV_SYMBOLS")
@@ -29,8 +31,7 @@ fn parse_args() -> (String, Vec<String>, String) {
 
     let mut history_path = std::env::var("HISTORY_PATH")
         .unwrap_or_default();
-
-    let args = std::env::args().skip(1).collect::<Vec<String>>();
+    let mut stake_minor = None;
     let mut index = 0usize;
 
     while index < args.len() {
@@ -39,27 +40,32 @@ fn parse_args() -> (String, Vec<String>, String) {
         if let Some(value) = arg.strip_prefix("--mode=") {
             mode = value.trim().to_string();
         } else if arg == "--mode" {
-            if let Some(value) = args.get(index + 1) {
-                mode = value.trim().to_string();
-                index += 1;
-            }
+            let value = args.get(index + 1).context("--mode requires a value")?;
+            mode = value.trim().to_string();
+            index += 1;
         } else if let Some(value) = arg
             .strip_prefix("--symbols=")
             .or_else(|| arg.strip_prefix("--symbol="))
         {
             symbols = parse_symbol_list(value);
         } else if arg == "--symbols" || arg == "--symbol" {
-            if let Some(value) = args.get(index + 1) {
-                symbols = parse_symbol_list(value);
-                index += 1;
-            }
+            let value = args.get(index + 1).context("--symbols requires a value")?;
+            symbols = parse_symbol_list(value);
+            index += 1;
         } else if let Some(value) = arg.strip_prefix("--history=") {
             history_path = value.trim().to_string();
         } else if arg == "--history" {
-            if let Some(value) = args.get(index + 1) {
-                history_path = value.trim().to_string();
-                index += 1;
-            }
+            let value = args.get(index + 1).context("--history requires a value")?;
+            history_path = value.trim().to_string();
+            index += 1;
+        } else if let Some(value) = arg.strip_prefix("--stake=") {
+            stake_minor = Some(crate::stake::parse_stake_minor(value)?);
+        } else if arg == "--stake" {
+            let value = args.get(index + 1).context("--stake requires a USD amount")?;
+            stake_minor = Some(crate::stake::parse_stake_minor(value)?);
+            index += 1;
+        } else {
+            anyhow::bail!("Unknown argument: {arg}");
         }
 
         index += 1;
@@ -69,7 +75,11 @@ fn parse_args() -> (String, Vec<String>, String) {
         symbols.extend(AVAILABLE_INDICES.iter().map(|symbol| (*symbol).to_string()));
     }
 
-    (mode, symbols, history_path)
+    Ok((mode, symbols, history_path, stake_minor))
+}
+
+fn parse_args() -> Result<(String, Vec<String>, String, Option<i64>)> {
+    parse_args_from(&std::env::args().skip(1).collect::<Vec<_>>())
 }
 
 fn parse_symbol_list(value: &str) -> Vec<String> {
@@ -154,6 +164,20 @@ mod runtime_duration_tests {
     }
 }
 
+#[cfg(test)]
+mod runtime_cli_tests {
+
+    #[test]
+    fn stake_parser_is_exact_and_bounded() {
+        assert_eq!(crate::stake::parse_stake_minor("1").unwrap(), 100);
+        assert_eq!(crate::stake::parse_stake_minor("3.5").unwrap(), 350);
+        assert_eq!(crate::stake::parse_stake_minor("1000.00").unwrap(), 100_000);
+        assert!(crate::stake::parse_stake_minor("0.99").is_err());
+        assert!(crate::stake::parse_stake_minor("1.001").is_err());
+        assert!(crate::stake::parse_stake_minor("1000.01").is_err());
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct RuntimeRiskConfig {
     max_stake_minor: i64,
@@ -210,6 +234,10 @@ impl RuntimeRiskConfig {
     }
     fn load(mode: &str) -> Result<Self> {
         Self::parse(mode, |name| std::env::var(name).ok())
+    }
+    fn with_cli_stake(mut self, stake_minor: Option<i64>) -> Self {
+        if let Some(stake_minor) = stake_minor { self.max_stake_minor = stake_minor; }
+        self
     }
 }
 

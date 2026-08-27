@@ -25,8 +25,8 @@ const WORST_HOURS: &[(u32, u32)] = &[(10, 12), (23, 24), (0, 0)];
 // ── Risk Management ────────────────────────────────────────
 // Stake policy. Monetary limits are held in minor currency units and converted
 // to an API number only at the websocket boundary.
-const MIN_STAKE_MINOR: i64 = 100; // 1.00
-const HARD_MAX_STAKE_MINOR: i64 = 10_000; // 100.00 absolute ceiling; balance and exposure caps may reduce it
+// Absolute stake bounds are shared by the engine, dashboard, and supervisor
+// from src/stake.rs.
 // A $50 bankroll can use up to $3 on the strongest qualified signal. Signal
 // risk continuously scales this cap down toward the $1 provider minimum.
 const BALANCE_RISK_BPS: i64 = 600; // 6% of verified balance

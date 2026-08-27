@@ -1,67 +1,70 @@
 {
-    admin off
+	admin off
+	default_sni {$DERIV_PUBLIC_HOST:localhost}
+}
+
+http://127.0.0.1:2015 {
+	respond /healthz 200
 }
 
 {$DERIV_PUBLIC_HOST:localhost} {
-    tls {
-        issuer acme {
-            profile shortlived
-        }
-    }
+	tls {
+		issuer acme {
+			profile shortlived
+		}
+	}
 
-    encode zstd gzip
+	encode zstd gzip
 
-    basic_auth {
-        Operator {$DASHBOARD_ADMIN_HASH}
-        Buyer {$DASHBOARD_BUYER_HASH}
-    }
+	basic_auth {
+		Operator {$DASHBOARD_ADMIN_HASH}
+		Buyer {$DASHBOARD_BUYER_HASH}
+	}
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Robots-Tag "noindex, nofollow, noarchive"
-        -Server
-    }
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		-Server
+	}
 
-    log {
-        output stdout
-        format json
-    }
+	@buyer expression `{http.auth.user.id} == "Buyer"`
+	@buyer_controls {
+		expression `{http.auth.user.id} == "Buyer"`
+		method POST
+		path /api/v1/control/* /api/v1/emergency-stop
+	}
 
-    @buyer expression `{http.auth.user.id} == "Buyer"`
-    reverse_proxy @buyer dashboard:8080 {
-        header_down X-Dashboard-Role "viewer"
-        transport http {
-            keepalive off
-        }
-    }
+	@operator_controls {
+		method POST
+		path /api/v1/control/* /api/v1/emergency-stop
+	}
 
-    @buyer_controls {
-        expression `{http.auth.user.id} == "Buyer"`
-        method POST
-        path /api/v1/control/* /api/v1/emergency-stop
-    }
+	# Keep authorization routing in this exact order.
+	route {
+		respond @buyer_controls `{"error":"read_only_access"}` 403
 
-    respond @buyer_controls `{"error":"read_only_access"}` 403
+		reverse_proxy @operator_controls dashboard:8080 {
+			header_up Authorization "Bearer {$DASHBOARD_OPERATOR_TOKEN}"
+			header_up X-CSRF-Token "{$DASHBOARD_OPERATOR_CSRF}"
+			header_up X-Deriv-Role "operator"
+			transport http {
+				keepalive off
+			}
+		}
 
-    @operator_controls {
-        method POST
-        path /api/v1/control/* /api/v1/emergency-stop
-    }
+		reverse_proxy @buyer dashboard:8080 {
+			header_down X-Dashboard-Role "viewer"
+			transport http {
+				keepalive off
+			}
+		}
 
-    reverse_proxy @operator_controls dashboard:8080 {
-        header_up Authorization "Bearer {$DASHBOARD_OPERATOR_TOKEN}"
-        header_up X-CSRF-Token "{$DASHBOARD_OPERATOR_CSRF}"
-        header_up X-Deriv-Role "operator"
-        transport http {
-            keepalive off
-        }
-    }
-
-    reverse_proxy dashboard:8080 {
-        health_uri /api/v1/status
-        health_interval 30s
-        transport http {
-            keepalive off
-        }
-    }
+		reverse_proxy dashboard:8080 {
+			health_uri /api/v1/status
+			health_interval 30s
+			transport http {
+				keepalive off
+			}
+		}
+	}
 }

@@ -107,7 +107,10 @@ fn heartbeat_fresh(stale_secs: u64) -> bool {
         .is_some_and(|age| age < Duration::from_secs(stale_secs))
 }
 fn runtime_desired() -> bool {
-    dir().join(DESIRED_DEMO_NAME).exists()
+    std::env::var("DERIV_WATCHDOG_ALWAYS_ON")
+        .ok()
+        .is_some_and(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        || dir().join(DESIRED_DEMO_NAME).exists()
 }
 fn health_check(stale_secs: u64) -> std::io::Result<()> {
     if !runtime_desired() {

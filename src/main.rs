@@ -42,6 +42,8 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 #[path = "modules/characterization_tests.rs"]
 mod characterization_tests;
 mod num_serde;
+mod stake;
+use stake::{live_warning, validate_live_confirmation, HARD_MAX_STAKE_MINOR, MIN_STAKE_MINOR};
 include!("modules/config.rs");
 
 include!("modules/models.rs");
@@ -193,10 +195,10 @@ async fn main() -> Result<()> {
     );
     println!();
 
-    let (mode_str, symbols, history_path) = parse_args();
+    let (mode_str, symbols, history_path, cli_stake_minor) = parse_args()?;
     let mode_str = mode_str.to_ascii_lowercase();
     let demo_duration = configured_demo_duration(&mode_str)?;
-    let runtime_risk_config = RuntimeRiskConfig::load(&mode_str)?;
+    let runtime_risk_config = RuntimeRiskConfig::load(&mode_str)?.with_cli_stake(cli_stake_minor);
     let random_seed = std::env::var("DERIV_RANDOM_SEED")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -217,6 +219,17 @@ async fn main() -> Result<()> {
     {
         anyhow::bail!("Live mode requires DERIV_ENABLE_LIVE_TRADING=I_UNDERSTAND_REAL_MONEY");
     }
+    if mode_str == "live" {
+        eprintln!("\n================================================================");
+        eprintln!("{}", live_warning(runtime_risk_config.max_stake_minor));
+        eprintln!("================================================================\n");
+        validate_live_confirmation(
+            runtime_risk_config.max_stake_minor,
+            std::env::var("DERIV_LIVE_STAKE_CONFIRMATION")
+                .ok()
+                .as_deref(),
+        )?;
+    }
     #[cfg(not(feature = "live-trading"))]
     if mode_str == "live" {
         anyhow::bail!(
@@ -227,8 +240,9 @@ async fn main() -> Result<()> {
         return run_deterministic_simulation(&symbols, &history_path, random_seed);
     }
     log::info!(
-        "Mode: {} | Symbols: {:?} | History: {}",
+        "Mode: {} | Stake cap: {:.2} | Symbols: {:?} | History: {}",
         mode_str,
+        runtime_risk_config.max_stake_minor as f64 / 100.0,
         symbols,
         history_path
     );
@@ -1761,7 +1775,8 @@ async fn main() -> Result<()> {
             event = evt_rx2.recv() => match event {
                 Ok(ApiEvent::ContractOpened { contract_id, buy_price, proposal_id }) => {
                     // Take pending buy info from Strategy
-                    if let Some(info) = pbi2.read().clone() {
+                    let pending_info = { pbi2.read().clone() };
+                    if let Some(info) = pending_info {
                         if proposal_id.as_deref() != Some(info.proposal_id.as_str()) {
                             risk_v2_stop("executor contract-open proposal mismatch requires reconciliation");
                             log::error!("[Executor] ContractOpened proposal mismatch ignored pending reconciliation");
@@ -1825,7 +1840,8 @@ async fn main() -> Result<()> {
                             log::info!("Portfolio reconciliation confirmed tracked contract is closed (identifier redacted)");
                         }
                     }
-                    if let Some(pending_info) = pbi2.read().clone() {
+                    let pending_info_snapshot = { pbi2.read().clone() };
+                    if let Some(pending_info) = pending_info_snapshot {
                         let pending_symbol = pending_info.symbol.clone();
                         let entry_tick_epoch = pending_info.entry_tick_epoch;
                         let pending_contract_type = pending_info.contract_type;
@@ -2092,15 +2108,17 @@ async fn main() -> Result<()> {
     tokio::select! {
         result = tokio::signal::ctrl_c() => {
             result?;
-            log::info!("Stop signal received. Engaging persistent stop and draining any open contract exposure...");
-            risk_v2_stop("operator interrupt");
+            log::info!("Stop signal received. Stopping new entries and draining any open contract exposure...");
+            risk_manager.write().engage_stop("graceful operator shutdown");
+            journal_event("run_stop", serde_json::json!({"reason":"graceful operator shutdown"}));
         }
         _ = auto_stop => {
             log::info!("Automatic risk stop reached. Shutting down...");
         }
         _ = wait_for_demo_deadline(demo_duration) => {
-            log::info!("Configured demo duration reached; engaging persistent stop...");
-            risk_v2_stop("configured demo duration completed");
+            log::info!("Configured demo duration reached; stopping new entries and draining exposure...");
+            risk_manager.write().engage_stop("configured demo duration completed");
+            journal_event("run_stop", serde_json::json!({"reason":"configured demo duration completed"}));
         }
     }
 
@@ -2527,7 +2545,7 @@ mod tests {
     #[test]
     fn signal_risk_monotonically_decreases_stake() {
         assert_eq!(stake_for_signal_risk(STAKE_AMOUNT, 0.0), STAKE_AMOUNT);
-        assert_eq!(stake_for_signal_risk(STAKE_AMOUNT, 0.5), 50.5);
+        assert_eq!(stake_for_signal_risk(STAKE_AMOUNT, 0.5), 500.5);
         assert_eq!(stake_for_signal_risk(STAKE_AMOUNT, 1.0), MIN_RECOVERY_STAKE);
     }
 
@@ -2551,7 +2569,7 @@ mod tests {
         );
         assert_eq!(
             RiskManager::with_balance(Money(100_000_000)).current_stake(),
-            100.0
+            1_000.0
         );
         assert_eq!(RiskManager::with_balance(Money(100)).current_stake(), 1.0);
     }
